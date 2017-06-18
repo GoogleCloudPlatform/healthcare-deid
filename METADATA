@@ -1,0 +1,11 @@
+# Format: google3/devtools/metadata/metadata.proto (go/google3metadata)
+
+name: "healthcare-deid"
+description: "Tools for performing DeIdentification on healthcare records."
+
+third_party {
+  url {
+    type: PIPER
+    value: "http://google3/cloud/healthcare/deid"
+  }
+}
