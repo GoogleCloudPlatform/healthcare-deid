@@ -20,7 +20,7 @@ import argparse
 import logging
 import sys
 
-from healthcare_deid.physionet import bigquery_to_gcs_lib
+from physionet import bigquery_to_gcs_lib
 
 
 def main():

@@ -30,9 +30,6 @@ py_binary(
 py_library(
     name = "bigquery_to_gcs_lib",
     srcs = ["bigquery_to_gcs_lib.py"],
-    deps = [
-        "//third_party/py/apache_beam",
-    ],
 )
 
 py_binary(
@@ -51,9 +48,6 @@ py_test(
 py_library(
     name = "gcs_to_bigquery_lib",
     srcs = ["gcs_to_bigquery_lib.py"],
-    deps = [
-        "//third_party/py/apache_beam",
-    ],
 )
 
 py_binary(
@@ -72,10 +66,6 @@ py_test(
 py_library(
     name = "run_deid_lib",
     srcs = ["run_deid_lib.py"],
-    deps = [
-        "//third_party/py/apiclient",
-        "//third_party/py/gcloud",
-    ],
 )
 
 py_binary(
@@ -89,6 +79,5 @@ py_test(
     srcs = ["run_deid_lib_test.py"],
     deps = [
         ":run_deid",
-        "//third_party/py/mock",
     ],
 )

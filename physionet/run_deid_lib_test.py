@@ -21,7 +21,7 @@ from __future__ import print_function
 import argparse
 import unittest
 
-from healthcare_deid.physionet import run_deid_lib
+from physionet import run_deid_lib
 
 from mock import call
 from mock import MagicMock
@@ -64,7 +64,7 @@ class RunDeidTest(unittest.TestCase):
     args[3] = 's3://not-gcs/path'
     self.assertEqual(1, self.RunPipeline(args))
 
-  @patch('healthcare_deid.physionet.run_deid_lib.run_deid')
+  @patch('physionet.run_deid_lib.run_deid')
   def testBucketLookup(self, mock_run_deid):
     """Check that the file lookup works properly."""
 

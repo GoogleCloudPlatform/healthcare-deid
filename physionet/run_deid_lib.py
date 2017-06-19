@@ -28,7 +28,7 @@ import re
 import time
 
 from apiclient import discovery
-from gcloud import storage
+from google.cloud import storage
 from oauth2client.client import GoogleCredentials
 
 POLL_INTERVAL_SECONDS = 5

@@ -20,7 +20,7 @@ import argparse
 import logging
 import sys
 
-from healthcare_deid.physionet import run_deid_lib
+from physionet import run_deid_lib
 
 
 def main():

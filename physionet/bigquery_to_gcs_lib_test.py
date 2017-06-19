@@ -18,7 +18,7 @@ from __future__ import absolute_import
 
 import unittest
 
-from healthcare_deid.physionet import bigquery_to_gcs_lib
+from physionet import bigquery_to_gcs_lib
 
 
 class BigqueryToGcsTest(unittest.TestCase):
