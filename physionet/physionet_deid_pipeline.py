@@ -21,9 +21,9 @@ import logging
 import os
 import sys
 
-from healthcare_deid.physionet import bigquery_to_gcs_lib
-from healthcare_deid.physionet import gcs_to_bigquery_lib
-from healthcare_deid.physionet import run_deid_lib
+from physionet import bigquery_to_gcs_lib
+from physionet import gcs_to_bigquery_lib
+from physionet import run_deid_lib
 
 
 def add_args(parser):
