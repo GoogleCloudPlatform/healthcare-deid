@@ -1,9 +1,10 @@
 # PhysioNet DeID on GCP
 
 This package contains tools to run the PhysioNet DeID tool on Google Cloud. The
-example commands use the [http://bazel.build/versions/master/docs/install.html](
-bazel build system), but can also be run directly (i.e.
-`python physionet/xxx.py`) if $PYTHONPATH inculdes this package.
+example commands use the [bazel build
+system](http://bazel.build/versions/master/docs/install.html), but can also be
+run directly (i.e.`python physionet/xxx.py`) if $PYTHONPATH includes this
+package.
 
 ## End-to-End BigQuery -> PhysioNet -> BigQuery Pipeline
 
