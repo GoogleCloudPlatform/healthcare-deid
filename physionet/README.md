@@ -22,7 +22,7 @@ pip install --upgrade google-cloud-storage
 Example usage:
 
 ```none
-blaze run third_party/py/healthcare_deid/physionet:physionet_deid_pipeline -- \
+bazel run physionet:physionet_deid_pipeline -- \
   --input_query "select * from [${PROJECT?}:${DATASET?}.deid]" \
   --project ${PROJECT?} \
   --gcs_working_directory gs://${BUCKET?}/deid/workspace \
