@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+package(
+    default_visibility = ["//visibility:public"],
+)
+
 # Build rules for PhysioNet-DeID-on-GCP tools.
 
 licenses(["notice"])  # Apache License 2.0
@@ -48,6 +52,7 @@ py_test(
 py_library(
     name = "gcs_to_bigquery_lib",
     srcs = ["gcs_to_bigquery_lib.py"],
+    deps = [":files_to_physionet_records"],
 )
 
 py_binary(
@@ -77,7 +82,11 @@ py_binary(
 py_test(
     name = "run_deid_lib_test",
     srcs = ["run_deid_lib_test.py"],
-    deps = [
-        ":run_deid",
-    ],
+    deps = [":run_deid"],
+)
+
+# Helper library.
+py_library(
+    name = "files_to_physionet_records",
+    srcs = ["files_to_physionet_records.py"],
 )

@@ -34,7 +34,7 @@ def main():
   run_deid_lib.run_pipeline(
       args.input_pattern, args.output_directory, args.config_file,
       args.project, args.log_directory, args.dict_directory,
-      args.lists_directory, args.max_num_threads)
+      args.lists_directory, args.max_num_threads, args.service_account)
 
   logging.info('Ran PhysioNet DeID and put output in %s', args.output_directory)
 

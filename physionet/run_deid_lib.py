@@ -21,6 +21,7 @@ pip install --upgrade google-api-python-client
 pip install --upgrade google-cloud-storage
 """
 
+import functools
 import logging
 from multiprocessing.pool import ThreadPool
 import os
@@ -34,8 +35,27 @@ from oauth2client.client import GoogleCredentials
 POLL_INTERVAL_SECONDS = 5
 
 
+def capture_exceptions(function):
+  """Wrapper to capture any exceptions in run_deid."""
+  @functools.wraps(function)
+  def wrapper(*args, **kwargs):
+    try:
+      function(*args, **kwargs)
+    except Exception as e:  # pylint:disable=broad-except
+      exceptions = []
+      if 'exceptions' in kwargs:
+        exceptions = kwargs['exceptions']
+      else:
+        exceptions = args[-1]
+      exceptions.append(e)
+
+  return wrapper
+
+
+@capture_exceptions
 def run_deid(input_filename, output_directory, config_file, project_id,
-             log_directory, dict_directory, lists_directory):
+             log_directory, dict_directory, lists_directory, service_account,
+             exceptions):  # pylint:disable=unused-argument
   """Calls Google APIs to run DeID on Docker and waits for the response."""
   request = {
       'ephemeralPipeline': {
@@ -44,7 +64,8 @@ def run_deid(input_filename, output_directory, config_file, project_id,
           }
       },
       'pipelineArgs': {
-          'logging': {}
+          'logging': {},
+          'serviceAccount': {}
       }
   }
 
@@ -58,11 +79,14 @@ def run_deid(input_filename, output_directory, config_file, project_id,
     cmds.append('gsutil -m cp %s lists/' % os.path.join(lists_directory, '*'))
   cmds += ['perl deid.pl input deid.config',
            'gsutil cp input.res %s' % output_filename]
+
   request['ephemeralPipeline']['docker']['cmd'] = ' && '.join(cmds)
   request['ephemeralPipeline']['name'] = 'deid'
   request['ephemeralPipeline']['projectId'] = project_id
   request['pipelineArgs']['projectId'] = project_id
   request['pipelineArgs']['logging']['gcsPath'] = log_directory
+  if service_account:
+    request['pipelineArgs']['serviceAccount']['email'] = service_account
 
   credentials = GoogleCredentials.get_application_default()
   service = discovery.build('genomics', 'v1alpha2', credentials=credentials)
@@ -73,19 +97,19 @@ def run_deid(input_filename, output_directory, config_file, project_id,
     operation = service.operations().get(name=operation_name).execute()
 
   if 'error' in operation:
-    print('Error for input file: %s:\n%s' % (input_filename,
-                                             operation['error']['message']))
+    logging.error('Error for input file: %s:\n%s', input_filename,
+                  operation['error']['message'])
 
 
 def run_pipeline(input_pattern, output_directory, config_file, project_id,
                  log_directory, dict_directory, lists_directory,
-                 max_num_threads, storage_client=None):
+                 max_num_threads, service_account='', storage_client=None):
   """Find the files in GCS, run DeID on them, and write output to GCS."""
   # Split the input path to get the bucket name and the path within the bucket.
   re_match = re.match(r'gs://([\w-]+)/(.*)', input_pattern)
   if not re_match or len(re_match.groups()) != 2:
-    print('Failed to parse input pattern: "%s". Expected: '
-          'gs://bucket-name/path/to/file' % input_pattern)
+    logging.error('Failed to parse input pattern: "%s". Expected: '
+                  'gs://bucket-name/path/to/file', input_pattern)
     return 1
   bucket_name = re_match.group(1)
   file_pattern = re_match.group(2)
@@ -109,6 +133,7 @@ def run_pipeline(input_pattern, output_directory, config_file, project_id,
     storage_client = storage.Client(project_id)
   bucket = storage_client.lookup_bucket(bucket_name)
   found_files = False
+  exceptions = []
   for blob in bucket.list_blobs(prefix=file_prefix):
     if not re.match(file_pattern_as_regex, blob.name):
       continue
@@ -116,8 +141,8 @@ def run_pipeline(input_pattern, output_directory, config_file, project_id,
     path = os.path.join('gs://', bucket_name, blob.name)
     thread_pool.apply_async(run_deid,
                             (path, output_directory, config_file,
-                             project_id, log_directory,
-                             dict_directory, lists_directory))
+                             project_id, log_directory, dict_directory,
+                             lists_directory, service_account, exceptions))
 
   if not found_files:
     logging.error('Failed to find any files matching "%s"', input_pattern)
@@ -125,6 +150,11 @@ def run_pipeline(input_pattern, output_directory, config_file, project_id,
 
   thread_pool.close()
   thread_pool.join()
+
+  if exceptions:
+    logging.error('Some requests failed:')
+    for exception in exceptions:
+      logging.error(exception)
 
 
 def add_args(parser):
@@ -144,6 +174,8 @@ def add_args(parser):
             'physionet.org/physiotools/deid/).'))
   parser.add_argument('--max_num_threads', type=int, default=10,
                       help='Run at most this many GCP pipeline jobs at once.')
+  parser.add_argument('--service_account', type=str,
+                      help=('Service account that should run de-id job(s).'))
 
 
 # Add arguments that won't be explicitly specified when this module is used as

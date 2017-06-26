@@ -48,7 +48,8 @@ class RunDeidTest(unittest.TestCase):
     return run_deid_lib.run_pipeline(
         args.input_pattern, args.output_directory, args.config_file,
         args.project, args.log_directory, args.dict_directory,
-        args.lists_directory, args.max_num_threads, storage_client)
+        args.lists_directory, args.max_num_threads,
+        storage_client=storage_client)
 
   def testParseArgs(self):
     """Sanity-check for ParseArgs."""
@@ -85,11 +86,11 @@ class RunDeidTest(unittest.TestCase):
     self.assertEqual(3, mock_run_deid.call_count)
     mock_run_deid.assert_has_calls(
         [call('gs://input/file-00-of-02', 'gs://output', 'my_file.config',
-              'my-project', 'gs://logs', None, None),
+              'my-project', 'gs://logs', None, None, '', []),
          call('gs://input/file-01-of-02', 'gs://output', 'my_file.config',
-              'my-project', 'gs://logs', None, None),
+              'my-project', 'gs://logs', None, None, '', []),
          call('gs://input/file-02-of-02', 'gs://output', 'my_file.config',
-              'my-project', 'gs://logs', None, None)])
+              'my-project', 'gs://logs', None, None, '', [])])
 
   @patch('apiclient.discovery.build')
   @patch('oauth2client.client.GoogleCredentials.get_application_default')
@@ -106,7 +107,8 @@ class RunDeidTest(unittest.TestCase):
 
     # Run the pipeline.
     run_deid_lib.run_deid('infile', 'outdir', 'test.config', 'my-project-id',
-                          'logdir', None, None)
+                          'logdir', dict_directory=None, lists_directory=None,
+                          service_account=None, exceptions=[])
 
     # Check that run() was called with the expected request.
     expected_request_body = {
@@ -114,7 +116,8 @@ class RunDeidTest(unittest.TestCase):
             'projectId': 'my-project-id',
             'logging': {
                 'gcsPath': 'logdir'
-            }
+            },
+            'serviceAccount': {}
         },
         'ephemeralPipeline': {
             'projectId': 'my-project-id',
@@ -131,6 +134,23 @@ class RunDeidTest(unittest.TestCase):
         }
     }
     run_fn.assert_called_once_with(body=expected_request_body)
+
+  @patch('os.path.join')
+  def testRunDeidRaisesException(self, mock_join):
+    # Ensure we capture exceptions raised in run_deid().
+    exception = Exception('BOOM!')
+    mock_join.side_effect = exception
+    exceptions = []
+    run_deid_lib.run_deid('infile', 'outdir', 'test.config', 'my-project-id',
+                          'logdir', dict_directory=None, lists_directory=None,
+                          service_account=None, exceptions=exceptions)
+    self.assertEqual([exception], exceptions)
+
+    # Ensure it works without using kwargs.
+    exceptions = []
+    run_deid_lib.run_deid('infile', 'outdir', 'test.config', 'my-project-id',
+                          'logdir', None, None, None, exceptions)
+    self.assertEqual([exception], exceptions)
 
 if __name__ == '__main__':
   unittest.main()

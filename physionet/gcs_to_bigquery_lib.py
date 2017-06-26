@@ -20,14 +20,13 @@ pip install --upgrade apache_beam
 
 from __future__ import absolute_import
 
-import argparse
 import logging
 import re
-import sys
 
 import apache_beam as beam
-from apache_beam.io.filesystems import FileSystems
 from apache_beam.options.pipeline_options import PipelineOptions
+
+from physionet import files_to_physionet_records as f2pn
 
 
 def map_to_bq_inputs(text):
@@ -52,32 +51,12 @@ def map_to_bq_inputs(text):
   return output
 
 
-# TODO(b/62383313): Move these two functions to a shared library.
-def map_file_to_records(file_path):
-  """Separate full file contents into individual records."""
-  reader = FileSystems.open(file_path)
-  buf = ''
-  for line in reader:
-    buf += line
-    if '||||END_OF_RECORD' in line:
-      yield buf
-      buf = ''
-
-
-def match_files(input_path):
-  """Find the list of absolute file paths that match the input path spec."""
-  for match_result in FileSystems.match([input_path]):
-    for metadata in match_result.metadata_list:
-      logging.info('matched path: %s', metadata.path)
-      yield metadata.path
-
-
 def run_pipeline(input_pattern, output_table, pipeline_args):
   """Read the records from GCS and write them to BigQuery."""
   p = beam.Pipeline(options=PipelineOptions(pipeline_args))
   _ = (p |
-       'match_files' >> beam.Create(match_files(input_pattern)) |
-       'to_records' >> beam.FlatMap(map_file_to_records) |
+       'match_files' >> beam.Create(f2pn.match_files(input_pattern)) |
+       'to_records' >> beam.FlatMap(f2pn.map_file_to_records) |
        'map_to_bq_inputs' >> beam.Map(map_to_bq_inputs) |
        'write' >> beam.io.Write(beam.io.BigQuerySink(
            output_table,
