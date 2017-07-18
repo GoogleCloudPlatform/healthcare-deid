@@ -35,35 +35,50 @@ REQUIRED_ARGS = ['--config_file', 'my_file.config',
                  '--log_directory', 'gs://logs']
 
 
+class FakeCredentials(object):
+
+  def get(self):  # pylint:disable=invalid-name
+    return self
+
+  # pylint:disable=invalid-name,unused-argument
+  def authorize(self, http, **kw):
+    return http
+
+
 class RunDeidTest(unittest.TestCase):
 
-  def ParseArgs(self, raw_args):
+  def parse_args(self, raw_args):
     parser = argparse.ArgumentParser()
     run_deid_lib.add_all_args(parser)
     return parser.parse_args(raw_args)
 
-  def RunPipeline(self, raw_args, storage_client=None):
-    args = self.ParseArgs(raw_args)
-
+  def run_pipeline(self, raw_args, storage_client=None, credentials=None):
+    args = self.parse_args(raw_args)
     return run_deid_lib.run_pipeline(
-        args.input_pattern, args.output_directory, args.config_file,
-        args.project, args.log_directory, args.dict_directory,
-        args.lists_directory, args.max_num_threads,
-        storage_client=storage_client)
+        args.input_pattern,
+        args.output_directory,
+        args.config_file,
+        args.project,
+        args.log_directory,
+        args.dict_directory,
+        args.lists_directory,
+        args.max_num_threads,
+        storage_client=storage_client,
+        credentials=credentials)
 
   def testParseArgs(self):
-    """Sanity-check for ParseArgs."""
-    parsed = self.ParseArgs(REQUIRED_ARGS)
+    """Sanity-check for parse_args."""
+    parsed = self.parse_args(REQUIRED_ARGS)
     self.assertEqual('my_file.config', parsed.config_file)
 
   def testInvalidInputPattern(self):
     """Program fails if --input_pattern is not as expected."""
     args = REQUIRED_ARGS[:]
     args[3] = 'gs://onlybucketname'
-    self.assertEqual(1, self.RunPipeline(args))
+    self.assertEqual('No matching files.', self.run_pipeline(args))
 
     args[3] = 's3://not-gcs/path'
-    self.assertEqual(1, self.RunPipeline(args))
+    self.assertEqual('No matching files.', self.run_pipeline(args))
 
   @patch('physionet.run_deid_lib.run_deid')
   def testBucketLookup(self, mock_run_deid):
@@ -80,17 +95,18 @@ class RunDeidTest(unittest.TestCase):
     mock_bucket.list_blobs.return_value = blobs
     mock_storage_client = MagicMock()
     mock_storage_client.lookup_bucket.return_value = mock_bucket
-
-    self.RunPipeline(REQUIRED_ARGS, mock_storage_client)
+    fake_creds = FakeCredentials()
+    self.run_pipeline(REQUIRED_ARGS, mock_storage_client, fake_creds)
 
     self.assertEqual(3, mock_run_deid.call_count)
-    mock_run_deid.assert_has_calls(
-        [call('gs://input/file-00-of-02', 'gs://output', 'my_file.config',
-              'my-project', 'gs://logs', None, None, '', []),
-         call('gs://input/file-01-of-02', 'gs://output', 'my_file.config',
-              'my-project', 'gs://logs', None, None, '', []),
-         call('gs://input/file-02-of-02', 'gs://output', 'my_file.config',
-              'my-project', 'gs://logs', None, None, '', [])])
+    mock_run_deid.assert_has_calls([
+        call('gs://input/file-00-of-02', 'gs://output', 'my_file.config',
+             'my-project', 'gs://logs', None, None, '', fake_creds, []),
+        call('gs://input/file-01-of-02', 'gs://output', 'my_file.config',
+             'my-project', 'gs://logs', None, None, '', fake_creds, []),
+        call('gs://input/file-02-of-02', 'gs://output', 'my_file.config',
+             'my-project', 'gs://logs', None, None, '', fake_creds, [])
+    ])
 
   @patch('apiclient.discovery.build')
   @patch('oauth2client.client.GoogleCredentials.get_application_default')
@@ -108,7 +124,7 @@ class RunDeidTest(unittest.TestCase):
     # Run the pipeline.
     run_deid_lib.run_deid('infile', 'outdir', 'test.config', 'my-project-id',
                           'logdir', dict_directory=None, lists_directory=None,
-                          service_account=None, exceptions=[])
+                          service_account=None, credentials=None, exceptions=[])
 
     # Check that run() was called with the expected request.
     expected_request_body = {
@@ -122,35 +138,51 @@ class RunDeidTest(unittest.TestCase):
         'ephemeralPipeline': {
             'projectId': 'my-project-id',
             'docker': {
-                'cmd':
-                    ('gsutil cp test.config deid.config && '
-                     'gsutil cp infile input.text && '
-                     'perl deid.pl input deid.config && '
-                     'gsutil cp input.res outdir/infile'),
+                'cmd': 'perl deid.pl input deid.config',
                 'imageName':
-                    'gcr.io/genomics-api-test/physionet:latest'
+                    'gcr.io/my-project-id/physionet:latest'
             },
-            'name': 'deid'
-        }
+            'name': 'deid',
+            'inputParameters': [
+                {
+                    'name': 'config',
+                    'default_value': 'test.config',
+                    'localCopy': {
+                        'path': 'deid.config',
+                        'disk': 'boot'
+                    }
+                },
+                {
+                    'name': 'input',
+                    'default_value': 'infile',
+                    'localCopy': {
+                        'path': 'input.text',
+                        'disk': 'boot'
+                    }
+                }
+            ],
+            'outputParameters': [
+                {
+                    'name': 'output',
+                    'default_value': 'outdir/infile',
+                    'localCopy': {
+                        'path': 'input.res',
+                        'disk': 'boot'
+                    },
+                },
+                {
+                    'name': 'output phi',
+                    'default_value': 'outdir/infile.phi',
+                    'localCopy': {
+                        'path': 'input.phi',
+                        'disk': 'boot'
+                    }
+                }
+            ],
+        },
     }
     run_fn.assert_called_once_with(body=expected_request_body)
 
-  @patch('os.path.join')
-  def testRunDeidRaisesException(self, mock_join):
-    # Ensure we capture exceptions raised in run_deid().
-    exception = Exception('BOOM!')
-    mock_join.side_effect = exception
-    exceptions = []
-    run_deid_lib.run_deid('infile', 'outdir', 'test.config', 'my-project-id',
-                          'logdir', dict_directory=None, lists_directory=None,
-                          service_account=None, exceptions=exceptions)
-    self.assertEqual([exception], exceptions)
-
-    # Ensure it works without using kwargs.
-    exceptions = []
-    run_deid_lib.run_deid('infile', 'outdir', 'test.config', 'my-project-id',
-                          'logdir', None, None, None, exceptions)
-    self.assertEqual([exception], exceptions)
 
 if __name__ == '__main__':
   unittest.main()

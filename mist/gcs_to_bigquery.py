@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Stand-alone executable version of run_deid."""
+"""Stand-alone executable version of gcs_to_bigquery_lib."""
 
 from __future__ import absolute_import
 
@@ -20,33 +20,19 @@ import argparse
 import logging
 import sys
 
-from google.cloud import storage
-from physionet import run_deid_lib
-import google.auth
+from mist import gcs_to_bigquery_lib
 
 
 def main():
   logging.getLogger().setLevel(logging.INFO)
 
   parser = argparse.ArgumentParser(
-      description=('Run Physionet DeID on Google Cloud Platform.'))
-  run_deid_lib.add_all_args(parser)
-  args = parser.parse_args(sys.argv[1:])
+      description=('Read from MIST files in GCS to BigQuery.'))
+  gcs_to_bigquery_lib.add_all_args(parser)
+  args, extra_args = parser.parse_known_args(sys.argv[1:])
 
-  credentials, _ = google.auth.default()
-  storage_client = storage.Client(args.project, credentials=credentials)
-
-  errors = run_deid_lib.run_pipeline(
-      args.input_pattern, args.output_directory, args.config_file,
-      args.project, args.log_directory, args.dict_directory,
-      args.lists_directory, args.max_num_threads, args.service_account,
-      storage_client, credentials)
-
-  if errors:
-    logging.error(errors)
-    return 1
-
-  logging.info('Ran PhysioNet DeID and put output in %s', args.output_directory)
+  gcs_to_bigquery_lib.run_pipeline(
+      args.input_pattern, args.output_table, extra_args)
 
 if __name__ == '__main__':
   main()

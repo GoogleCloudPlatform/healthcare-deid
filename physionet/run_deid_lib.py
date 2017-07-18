@@ -21,140 +21,47 @@ pip install --upgrade google-api-python-client
 pip install --upgrade google-cloud-storage
 """
 
-import functools
-import logging
-from multiprocessing.pool import ThreadPool
 import os
-import re
-import time
 
-from apiclient import discovery
-from google.cloud import storage
-from oauth2client.client import GoogleCredentials
+from common import run_docker
 
-POLL_INTERVAL_SECONDS = 5
+DOCKER_NAME_TEMPLATE = 'gcr.io/%s/physionet:latest'
 
 
-def capture_exceptions(function):
-  """Wrapper to capture any exceptions in run_deid."""
-  @functools.wraps(function)
-  def wrapper(*args, **kwargs):
-    try:
-      function(*args, **kwargs)
-    except Exception as e:  # pylint:disable=broad-except
-      exceptions = []
-      if 'exceptions' in kwargs:
-        exceptions = kwargs['exceptions']
-      else:
-        exceptions = args[-1]
-      exceptions.append(e)
-
-  return wrapper
-
-
-@capture_exceptions
 def run_deid(input_filename, output_directory, config_file, project_id,
              log_directory, dict_directory, lists_directory, service_account,
-             exceptions):  # pylint:disable=unused-argument
+             credentials, exceptions):
   """Calls Google APIs to run DeID on Docker and waits for the response."""
-  request = {
-      'ephemeralPipeline': {
-          'docker': {
-              'imageName': 'gcr.io/genomics-api-test/physionet:latest',
-          }
-      },
-      'pipelineArgs': {
-          'logging': {},
-          'serviceAccount': {}
-      }
-  }
-
   output_filename = os.path.join(output_directory,
                                  os.path.basename(input_filename))
-  cmds = ['gsutil cp %s deid.config' % config_file,
-          'gsutil cp %s input.text' % input_filename]
+
+  cmds = []
   if dict_directory:
     cmds.append('gsutil -m cp %s dict/' % os.path.join(dict_directory, '*'))
   if lists_directory:
     cmds.append('gsutil -m cp %s lists/' % os.path.join(lists_directory, '*'))
-  cmds += ['perl deid.pl input deid.config',
-           'gsutil cp input.res %s' % output_filename]
+  cmds.append('perl deid.pl input deid.config')
 
-  request['ephemeralPipeline']['docker']['cmd'] = ' && '.join(cmds)
-  request['ephemeralPipeline']['name'] = 'deid'
-  request['ephemeralPipeline']['projectId'] = project_id
-  request['pipelineArgs']['projectId'] = project_id
-  request['pipelineArgs']['logging']['gcsPath'] = log_directory
-  if service_account:
-    request['pipelineArgs']['serviceAccount']['email'] = service_account
-
-  credentials = GoogleCredentials.get_application_default()
-  service = discovery.build('genomics', 'v1alpha2', credentials=credentials)
-  operation = service.pipelines().run(body=request).execute()
-  operation_name = operation['name']
-  while not operation['done']:
-    time.sleep(POLL_INTERVAL_SECONDS)
-    operation = service.operations().get(name=operation_name).execute()
-
-  if 'error' in operation:
-    logging.error('Error for input file: %s:\n%s', input_filename,
-                  operation['error']['message'])
+  inputs = [('config', config_file, 'deid.config'),
+            ('input', input_filename, 'input.text')]
+  outputs = [('output', 'input.res', output_filename),
+             ('output phi', 'input.phi', output_filename + '.phi')]
+  docker_image_name = DOCKER_NAME_TEMPLATE % project_id
+  run_docker.run_docker(cmds, project_id, log_directory, docker_image_name,
+                        inputs, outputs, service_account, credentials,
+                        exceptions)
 
 
 def run_pipeline(input_pattern, output_directory, config_file, project_id,
                  log_directory, dict_directory, lists_directory,
-                 max_num_threads, service_account='', storage_client=None):
+                 max_num_threads, service_account='', storage_client=None,
+                 credentials=None):
   """Find the files in GCS, run DeID on them, and write output to GCS."""
-  # Split the input path to get the bucket name and the path within the bucket.
-  re_match = re.match(r'gs://([\w-]+)/(.*)', input_pattern)
-  if not re_match or len(re_match.groups()) != 2:
-    logging.error('Failed to parse input pattern: "%s". Expected: '
-                  'gs://bucket-name/path/to/file', input_pattern)
-    return 1
-  bucket_name = re_match.group(1)
-  file_pattern = re_match.group(2)
-
-  # The storage client doesn't take a pattern, just a prefix, so we presume here
-  # that the only special/regex-like characters used are '?' and '*', and take
-  # the longest prefix that doesn't contain either of those.
-  file_prefix = file_pattern
-  re_result = re.search(r'(.*?)[\?|\*]', file_pattern)
-  if re_result:
-    file_prefix = re_result.group(1)
-
-  # Convert file_pattern to a regex by escaping the string, explicitly
-  # converting the characters we want to treat specially (* and ?), and
-  # appending '\Z' to the end of the pattern so we match only the full string.
-  file_pattern_as_regex = (
-      re.escape(file_pattern).replace('\\*', '.*').replace('\\?', '.') + r'\Z')
-
-  thread_pool = ThreadPool(max_num_threads)
-  if storage_client is None:
-    storage_client = storage.Client(project_id)
-  bucket = storage_client.lookup_bucket(bucket_name)
-  found_files = False
-  exceptions = []
-  for blob in bucket.list_blobs(prefix=file_prefix):
-    if not re.match(file_pattern_as_regex, blob.name):
-      continue
-    found_files = True
-    path = os.path.join('gs://', bucket_name, blob.name)
-    thread_pool.apply_async(run_deid,
-                            (path, output_directory, config_file,
-                             project_id, log_directory, dict_directory,
-                             lists_directory, service_account, exceptions))
-
-  if not found_files:
-    logging.error('Failed to find any files matching "%s"', input_pattern)
-    return
-
-  thread_pool.close()
-  thread_pool.join()
-
-  if exceptions:
-    logging.error('Some requests failed:')
-    for exception in exceptions:
-      logging.error(exception)
+  return run_docker.run_pipeline(
+      input_pattern, run_deid,
+      [output_directory, config_file, project_id, log_directory, dict_directory,
+       lists_directory, service_account],
+      max_num_threads, storage_client, credentials)
 
 
 def add_args(parser):

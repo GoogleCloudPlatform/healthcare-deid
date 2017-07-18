@@ -21,9 +21,11 @@ import logging
 import os
 import sys
 
+from google.cloud import storage
 from physionet import bigquery_to_gcs_lib
 from physionet import gcs_to_bigquery_lib
 from physionet import run_deid_lib
+import google.auth
 
 
 def add_args(parser):
@@ -52,12 +54,18 @@ def main():
   logging.info('Copied data from BigQuery to %s', input_file)
 
   output_dir = os.path.join(args.gcs_working_directory, 'output')
+
+  credentials, _ = google.auth.default()
+  storage_client = storage.Client(args.project, credentials=credentials)
+
   run_deid_lib.run_pipeline(input_file + '-?????-of-?????', output_dir,
                             args.config_file, args.project,
                             os.path.join(args.gcs_working_directory, 'logs'),
                             dict_directory=args.dict_directory,
                             lists_directory=args.lists_directory,
-                            max_num_threads=args.max_num_threads)
+                            max_num_threads=args.max_num_threads,
+                            storage_client=storage_client,
+                            credentials=credentials)
 
   logging.info('Ran PhysioNet DeID and put output in %s', output_dir)
 

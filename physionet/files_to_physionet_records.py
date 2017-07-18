@@ -38,6 +38,7 @@ def map_file_to_records(file_path):
 def match_files(input_path):
   """Find the list of absolute file paths that match the input path spec."""
   file_counter = Metrics.counter('main', 'chc-matched-files')
+  logging.info('matching path: %s', input_path)
   for match_result in filesystems.FileSystems.match([input_path]):
     for metadata in match_result.metadata_list:
       logging.info('matched path: %s', metadata.path)

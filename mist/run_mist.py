@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Stand-alone executable version of run_deid."""
+"""Stand-alone executable version of run_mist_lib."""
 
 from __future__ import absolute_import
 
@@ -21,7 +21,7 @@ import logging
 import sys
 
 from google.cloud import storage
-from physionet import run_deid_lib
+from mist import run_mist_lib
 import google.auth
 
 
@@ -29,24 +29,23 @@ def main():
   logging.getLogger().setLevel(logging.INFO)
 
   parser = argparse.ArgumentParser(
-      description=('Run Physionet DeID on Google Cloud Platform.'))
-  run_deid_lib.add_all_args(parser)
+      description=('Run MIST on Google Cloud Platform.'))
+  run_mist_lib.add_all_args(parser)
   args = parser.parse_args(sys.argv[1:])
 
   credentials, _ = google.auth.default()
   storage_client = storage.Client(args.project, credentials=credentials)
 
-  errors = run_deid_lib.run_pipeline(
-      args.input_pattern, args.output_directory, args.config_file,
-      args.project, args.log_directory, args.dict_directory,
-      args.lists_directory, args.max_num_threads, args.service_account,
-      storage_client, credentials)
+  errors = run_mist_lib.run_pipeline(
+      args.input_pattern, args.output_directory, args.model_filename,
+      args.project, args.log_directory, args.max_num_threads,
+      args.service_account, storage_client, credentials)
 
   if errors:
     logging.error(errors)
     return 1
 
-  logging.info('Ran PhysioNet DeID and put output in %s', args.output_directory)
+  logging.info('Ran MIST and put output in %s', args.output_directory)
 
 if __name__ == '__main__':
   main()

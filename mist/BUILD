@@ -16,18 +16,23 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-# Build rules for PhysioNet-DeID-on-GCP tools.
+# Build rules for MIST-on-GCP tools.
 
 licenses(["notice"])  # Apache License 2.0
 
-py_binary(
-    name = "physionet_deid_pipeline",
-    srcs = ["physionet_deid_pipeline.py"],
+# Rules for running MIST on Docker on GCP.
+py_library(
+    name = "run_mist_lib",
+    srcs = ["run_mist_lib.py"],
     deps = [
-        ":bigquery_to_gcs",
-        ":gcs_to_bigquery",
-        ":run_deid",
+        "//common:run_docker",
     ],
+)
+
+py_binary(
+    name = "run_mist",
+    srcs = ["run_mist.py"],
+    deps = [":run_mist_lib"],
 )
 
 # BigQuery -> GCS rules.
@@ -52,7 +57,7 @@ py_test(
 py_library(
     name = "gcs_to_bigquery_lib",
     srcs = ["gcs_to_bigquery_lib.py"],
-    deps = [":files_to_physionet_records"],
+    deps = ["//physionet:files_to_physionet_records"],
 )
 
 py_binary(
@@ -65,31 +70,4 @@ py_test(
     name = "gcs_to_bigquery_lib_test",
     srcs = ["gcs_to_bigquery_lib_test.py"],
     deps = [":gcs_to_bigquery_lib"],
-)
-
-# Rules for running PhysioNet DeID on Docker on GCP.
-py_library(
-    name = "run_deid_lib",
-    srcs = ["run_deid_lib.py"],
-    deps = [
-        "//common:run_docker",
-    ],
-)
-
-py_binary(
-    name = "run_deid",
-    srcs = ["run_deid.py"],
-    deps = [":run_deid_lib"],
-)
-
-py_test(
-    name = "run_deid_lib_test",
-    srcs = ["run_deid_lib_test.py"],
-    deps = [":run_deid"],
-)
-
-# Helper library.
-py_library(
-    name = "files_to_physionet_records",
-    srcs = ["files_to_physionet_records.py"],
 )

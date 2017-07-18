@@ -6,6 +6,18 @@ system](http://bazel.build/versions/master/docs/install.html), but can also be
 run directly (i.e.`python physionet/xxx.py`) if $PYTHONPATH includes this
 package.
 
+## Building the docker container
+
+Before running PhysioNet, you'll need to build a docker container that your
+project can use.
+
+```shell
+cd physionet/docker/
+
+gcloud container builds submit . --config=cloudbuild.yaml \
+  --substitutions="_PHYSIONET_VERSION=1.1" --project=${PROJECT?}
+```
+
 ## End-to-End BigQuery -> PhysioNet -> BigQuery Pipeline
 
 physionet_deid_pipeline.py stitches together 3 of our tools to perform
