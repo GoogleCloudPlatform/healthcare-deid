@@ -178,6 +178,10 @@
     {
       "name": "LAST_NAME",
       "infoTypes": []
+    },
+    {
+      "name": "UNKNOWN_CLASSIFICATION_TYPE",
+      "infoTypes": []
     }
   ]
 }

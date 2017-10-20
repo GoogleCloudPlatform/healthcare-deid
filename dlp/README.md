@@ -58,10 +58,10 @@ bazel build dlp:run_deid && \
 bazel-bin/dlp/run_deid \
   --input_table "${PROJECT?}:${DATASET?}.dlp_input" \
   --project ${PROJECT?} \
-  --deid_config_file sample_deid_config.json \
+  --deid_config_file dlp/sample_deid_config.json \
   --deid_table ${PROJECT?}:${DATASET?}.deid_output \
   --findings_table ${PROJECT?}:${DATASET?}.dlp_findings \
-  --annotated_notes_table ${PROJECT?}:${DATASET?}.dlp_annotated \
+  --annotated_notes_table ${PROJECT?}:${DATASET?}.dlp_annotated
   --mae_dir gs://bucket-name/mae-output-directory
 ```
 
