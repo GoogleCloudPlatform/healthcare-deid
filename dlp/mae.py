@@ -55,7 +55,10 @@ def generate_mae(task_name, mae_tag_categories, inspect_result):
 <TEXT><![CDATA[{1}]]></TEXT>
 <TAGS>""".format(task_name, inspect_result['original_note'])]
   counts = collections.defaultdict(int)
-  for finding in inspect_result['result']['findings']:
+  findings = []
+  if 'findings' in inspect_result['result']:
+    findings = inspect_result['result']['findings']
+  for finding in findings:
     tag_name = infotype_to_tag_map[finding['infoType']['name']]
     count = counts[tag_name]
     counts[tag_name] += 1

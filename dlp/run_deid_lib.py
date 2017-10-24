@@ -66,7 +66,7 @@ def deid(credentials, deid_config, inspect_config, row):
         row['patient_id'], row['record_number'], response['error']))
 
   return {
-      'patient_id': int(row['patient_id']),
+      'patient_id': row['patient_id'],
       'record_number': int(row['record_number']),
       'raw_response': response
   }
@@ -92,7 +92,7 @@ def inspect(credentials, inspect_config, row):
         row['patient_id'], row['record_number'], response['error']))
 
   return {
-      'patient_id': int(row['patient_id']),
+      'patient_id': row['patient_id'],
       'record_number': int(row['record_number']),
       'original_note': row['note'],
       'result': response['results'][0]
@@ -228,7 +228,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
          | 'format_findings' >> beam.Map(format_findings)
          | 'write_findings' >> beam.io.Write(beam.io.BigQuerySink(
              findings_table,
-             schema='patient_id:INTEGER,record_number:INTEGER,findings:STRING',
+             schema='patient_id:STRING,record_number:INTEGER,findings:STRING',
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
   if annotated_notes_table:
     # Annotate the PII found by inspect and write the result to BigQuery.
@@ -236,7 +236,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
          | 'add_annotations' >> beam.Map(add_annotations)
          | 'write_annotated' >> beam.io.Write(beam.io.BigQuerySink(
              annotated_notes_table,
-             schema='patient_id:INTEGER, record_number:INTEGER, note:STRING',
+             schema='patient_id:STRING, record_number:INTEGER, note:STRING',
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
   if mae_dir:
     if not mae_dir.startswith('gs://'):
@@ -260,7 +260,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
          | 'get_deid_text' >> beam.Map(get_deid_text)
          | 'write_deid_text' >> beam.io.Write(beam.io.BigQuerySink(
              deid_table,
-             schema='patient_id:INTEGER, record_number:INTEGER, note:STRING',
+             schema='patient_id:STRING, record_number:INTEGER, note:STRING',
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
   result = p.run().wait_until_finish()
 

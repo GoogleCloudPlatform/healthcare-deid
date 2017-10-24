@@ -141,13 +141,13 @@ class RunDeidLibTest(unittest.TestCase):
 
     self.assertEqual(
         fake_db['deid_tbl'],
-        {'patient_id': 111, 'record_number': 1, 'note': 'deid_resp_val'})
+        {'patient_id': '111', 'record_number': 1, 'note': 'deid_resp_val'})
     self.assertEqual(
         fake_db['findings_tbl'],
-        {'patient_id': 111, 'record_number': 1, 'findings': str(findings)})
+        {'patient_id': '111', 'record_number': 1, 'findings': str(findings)})
     self.assertEqual(
         fake_db['annotations_tbl'],
-        {'patient_id': 111, 'record_number': 1,
+        {'patient_id': '111', 'record_number': 1,
          'note': ('text and <finding info_types="US_CENSUS_NAME,US_MALE_NAME">'
                   'PID</finding> and <finding info_types="PHONE_NUMBER">'
                   'MORE PID</finding>')})
