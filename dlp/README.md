@@ -15,24 +15,39 @@ permissions follow HIPPA guidelines.
 
 * Enable the [DLP API](https://console.cloud.google.com/apis/api/dlp.googleapis.com/overview)
 * Create a [service account](https://cloud.google.com/storage/docs/authentication#service_accounts)
-  for your project, give it access to your input BigQuery tables, and download
-  its credentials to a json file.
-* Activate the service account and point GOOGLE_APPLICATION_CREDENTIALS to the
-  service account credentials.
+  for your project with the "BigQuery User" role.
+* Ensure the service account has access to the BigQuery tables and GCS buckets
+  you will be using.
+* Generate service account credentials:
 
 ```shell
-gcloud auth activate-service-account --key-file=YOUR_KEYS
-export GOOGLE_APPLICATION_CREDENTIALS=YOUR_KEYS
+gcloud iam service-accounts keys create --iam-account SERVICE_ACCOUNT_EMAIL_ADDRESS ~/key.json
+```
+
+* Specify the credentials in the GOOGLE_APPLICATION_CREDENTIALS environment
+  variable:
+
+```shell
+export GOOGLE_APPLICATION_CREDENTIALS=~/key.json
 ```
 
 ### Dependencies
 
-Running the pipeline requires having the Google Python API client and the
-Python Apache Beam client installed:
+Running the pipeline requires having the Google Python API client, Google Cloud
+Storage client, and Python Apache Beam client installed. Note that as of
+2017-10-27, there is an incompatibility with the latest version of the
+`six` library, which requires a downgrade to 1.10.0 to fix.
 
-```none
-pip install --upgrade apache_beam
-pip install --upgrade google-api-python-client
+```shell
+sudo pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-storage six==1.10.0
+```
+
+
+The code for the pipeline itself is available for download from GitHub:
+
+```shell
+git clone https://github.com/GoogleCloudPlatform/healthcare-deid.git &&
+cd healthcare-deid
 ```
 
 ## Running the pipeline
