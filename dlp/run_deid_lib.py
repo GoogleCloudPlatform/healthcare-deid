@@ -45,9 +45,9 @@ def get_deid_text(deid_response):
   }
 
 
-def deid(credentials, deid_config, inspect_config, row):
+def deid(credentials, deid_config, inspect_config, dlp_api_name, row):
   """Put the data through the DLP API DeID."""
-  dlp = discovery.build('dlp', 'v2beta1', credentials=credentials)
+  dlp = discovery.build(dlp_api_name, 'v2beta1', credentials=credentials)
   content = dlp.content()
 
   req_body = {
@@ -72,9 +72,9 @@ def deid(credentials, deid_config, inspect_config, row):
   }
 
 
-def inspect(credentials, inspect_config, row):
+def inspect(credentials, inspect_config, dlp_api_name, row):
   """Put the data through the DLP API DeID inspect method."""
-  dlp = discovery.build('dlp', 'v2beta1', credentials=credentials)
+  dlp = discovery.build(dlp_api_name, 'v2beta1', credentials=credentials)
   content = dlp.content()
 
   req_body = {
@@ -190,7 +190,7 @@ def write_dtd(storage_client, mae_dir, mae_tag_categories, task_name):
 
 def run_pipeline(input_query, input_table, deid_table, findings_table,
                  annotated_notes_table, mae_dir, deid_config_file, task_name,
-                 project, credentials, pipeline_args):
+                 project, credentials, dlp_api_name, pipeline_args):
   """Read the records from BigQuery, DeID them, and write them to BigQuery."""
   if (input_query is None) == (input_table is None):
     return 'Exactly one of input_query and input_table must be set.'
@@ -221,7 +221,8 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if findings_table or annotated_notes_table or mae_dir:
     inspect_data = (
         reads |
-        'inspect' >> beam.Map(partial(inspect, credentials, inspect_config)))
+        'inspect' >> beam.Map(partial(
+            inspect, credentials, inspect_config, dlp_api_name)))
   if findings_table:
     # Call inspect and write the result to BigQuery.
     _ = (inspect_data
@@ -256,7 +257,8 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
     # Call deidentify and write the result to BigQuery.
     _ = (reads
          | 'deid' >> beam.Map(
-             partial(deid, credentials, deid_config, inspect_config))
+             partial(deid, credentials, deid_config, inspect_config,
+             dlp_api_name))
          | 'get_deid_text' >> beam.Map(get_deid_text)
          | 'write_deid_text' >> beam.io.Write(beam.io.BigQuerySink(
              deid_table,
@@ -295,3 +297,6 @@ def add_all_args(parser):
                       help='Path to a json file holding a DeidentifyConfig.')
   parser.add_argument('--project', type=str, required=True,
                       help='GCP project to run as.')
+  parser.add_argument('--dlp_api_name', type=str, required=False,
+                      help='Name to use in the DLP API url.',
+                      default='dlp')

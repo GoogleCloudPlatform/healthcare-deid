@@ -47,7 +47,8 @@ def main():
   errors = run_deid_lib.run_pipeline(
       args.input_query, args.input_table, args.deid_table, args.findings_table,
       args.annotated_notes_table, args.mae_dir, args.deid_config_file,
-      args.mae_task_name, args.project, credentials, pipeline_args)
+      args.mae_task_name, args.project, credentials, args.dlp_api_name,
+      pipeline_args)
 
   if errors:
     logging.error(errors)

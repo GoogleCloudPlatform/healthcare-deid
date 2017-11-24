@@ -127,7 +127,7 @@ class RunDeidLibTest(unittest.TestCase):
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl', 'annotations_tbl',
         'gs://mae-bucket/mae-dir', deid_cfg, 'InspectPhiTask', 'project-name',
-        'fake-credentials', pipeline_args=None)
+        'fake-credentials', 'dlp', pipeline_args=None)
 
     self.maxDiff = 10000
     with open(os.path.join(TESTDATA_DIR, 'mae_testdata', 'sample.xml')) as f:
