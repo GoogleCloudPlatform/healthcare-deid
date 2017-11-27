@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@my_deps//:requirements.bzl", "requirement")
+
 package(
     default_visibility = ["//visibility:public"],
 )
@@ -34,6 +36,9 @@ py_binary(
 py_library(
     name = "bigquery_to_gcs_lib",
     srcs = ["bigquery_to_gcs_lib.py"],
+    deps = [
+        requirement("apache_beam"),
+    ],
 )
 
 py_binary(
@@ -52,7 +57,10 @@ py_test(
 py_library(
     name = "gcs_to_bigquery_lib",
     srcs = ["gcs_to_bigquery_lib.py"],
-    deps = [":files_to_physionet_records"],
+    deps = [
+        ":files_to_physionet_records",
+        requirement("apache_beam"),
+    ],
 )
 
 py_binary(
@@ -92,4 +100,7 @@ py_test(
 py_library(
     name = "files_to_physionet_records",
     srcs = ["files_to_physionet_records.py"],
+    deps = [
+        requirement("apache_beam"),
+    ],
 )

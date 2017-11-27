@@ -75,10 +75,12 @@ class RunDeidTest(unittest.TestCase):
     """Program fails if --input_pattern is not as expected."""
     args = REQUIRED_ARGS[:]
     args[3] = 'gs://onlybucketname'
-    self.assertEqual('No matching files.', self.run_pipeline(args))
+    with self.assertRaises(Exception):
+      self.run_pipeline(args)
 
     args[3] = 's3://not-gcs/path'
-    self.assertEqual('No matching files.', self.run_pipeline(args))
+    with self.assertRaises(Exception):
+      self.run_pipeline(args)
 
   @patch('physionet.run_deid_lib.run_deid')
   def testBucketLookup(self, mock_run_deid):

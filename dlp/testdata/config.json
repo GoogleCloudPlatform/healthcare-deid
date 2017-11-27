@@ -1,0 +1,63 @@
+{
+  "deidConfig": {
+    "infoTypeTransformations": {
+      "transformations": [
+        {
+          "infoTypes": [
+            {"name": "PHONE_NUMBER"},
+            {"name": "US_CENSUS_NAME"},
+            {"name": "US_FEMALE_NAME"},
+            {"name": "US_MALE_NAME"}
+          ],
+          "primitiveTransformation": {
+            "replaceWithInfoTypeConfig": {}
+          }
+        }
+      ]
+    }
+  },
+  "infoTypeCategories": [
+    {
+      "name": "NAME",
+      "infoTypes": ["US_CENSUS_NAME"]
+    },
+    {
+      "name": "FIRST_NAME",
+      "infoTypes": [
+        "US_FEMALE_NAME", "US_MALE_NAME", "KnownFirstName", "DatasetFirstName"
+      ]
+    },
+    {
+      "name": "LAST_NAME",
+      "infoTypes": ["KnownLastName"]
+    },
+    {
+      "name": "PHONE",
+      "infoTypes": ["PHONE_NUMBER"]
+    },
+    {
+      "name": "UNKNOWN_CLASSIFICATION_TYPE",
+      "infoTypes": []
+    }
+  ],
+  "perRowTypes": [
+    {
+      "columnName": "first_name",
+      "infoTypeName": "KnownFirstName"
+    },
+    {
+      "columnName": "last_name",
+      "infoTypeName": "KnownLastName"
+    }
+  ],
+  "perDatasetTypes": [
+    {
+      "infoTypes": [
+        {
+          "columnName": "first_name",
+          "infoTypeName": "DatasetFirstName"
+        }
+      ]
+    }
+  ]
+}

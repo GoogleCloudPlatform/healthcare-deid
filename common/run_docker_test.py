@@ -18,6 +18,7 @@ from __future__ import absolute_import
 
 import unittest
 
+from common import gcsutil
 from common import run_docker
 
 from mock import Mock
@@ -58,9 +59,9 @@ class RunDockerTest(unittest.TestCase):
                       'gs://bucket/file-2,arg1'],
                      results)
 
-  @patch('common.run_docker._find_files')
+  @patch('common.gcsutil.find_files')
   def testRunPipelineWithExceptions(self, mock_find_files):
-    mock_find_files.return_value = ['gs://bucket/file1']
+    mock_find_files.return_value = [gcsutil.GcsFileName('bucket', 'file1')]
 
     # Test function that throws an exception.
     @run_docker.capture_exceptions

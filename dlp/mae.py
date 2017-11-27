@@ -17,6 +17,10 @@
 import collections
 
 
+MaeTuple = collections.namedtuple('MaeTuple',
+                                  ['patient_id', 'record_number', 'mae_xml'])
+
+
 def _start(finding):
   if 'start' not in finding['location']['byteRange']:
     return 0
@@ -30,7 +34,7 @@ def _end(finding):
 def generate_dtd(mae_tag_categories, task_name):
   # DTD format at http://github.com/keighrim/mae-annotation/wiki/defining-dtd
   dtd_contents = ['<!ENTITY name "{0}">'.format(task_name)]
-  for category in sorted(mae_tag_categories, key=lambda i: i['name']):
+  for category in mae_tag_categories:
     name = category['name']
     dtd_contents.append(
         '\n\n<!ELEMENT {0} ( #PCDATA ) >\n'
@@ -66,7 +70,5 @@ def generate_mae(task_name, mae_tag_categories, inspect_result):
         tag_name, count, _start(finding), _end(finding)))
 
   mae_xml.append('\n</TAGS></{0}>\n'.format(task_name))
-  maetuple = collections.namedtuple('MAE',
-                                    ['patient_id', 'record_number', 'mae_xml'])
-  return maetuple(inspect_result['patient_id'], inspect_result['record_number'],
+  return MaeTuple(inspect_result['patient_id'], inspect_result['record_number'],
                   ''.join(mae_xml))

@@ -13,55 +13,49 @@
 # limitations under the License.
 
 load("@my_deps//:requirements.bzl", "requirement")
+load("@org_pubref_rules_protobuf//python:rules.bzl", "py_proto_library")
 
 package(
     default_visibility = ["//visibility:public"],
 )
 
-# Build rules for DLP API DeID tools.
+# Build rules for DeID evaluation tools.
 
 licenses(["notice"])  # Apache License 2.0
 
 py_library(
-    name = "mae",
-    srcs = ["mae.py"],
-)
-
-py_test(
-    name = "mae_test",
-    srcs = ["mae_test.py"],
+    name = "run_pipeline_lib",
+    srcs = ["run_pipeline_lib.py"],
     deps = [
-        ":mae",
+        ":results_py_pb2",
+        "//common:gcsutil",
+        requirement("apache_beam"),
     ],
 )
 
-py_library(
-    name = "run_deid_lib",
-    srcs = ["run_deid_lib.py"],
+py_test(
+    name = "run_pipeline_lib_test",
+    srcs = ["run_pipeline_lib_test.py"],
     deps = [
-        ":mae",
+        ":results_py_pb2",
+        ":run_pipeline_lib",
+        "//common:testutil",
         requirement("apache_beam"),
     ],
 )
 
 py_binary(
-    name = "run_deid",
-    srcs = ["run_deid.py"],
-    deps = [":run_deid_lib"],
+    name = "run_pipeline",
+    srcs = ["run_pipeline.py"],
+    deps = [":run_pipeline_lib"],
 )
 
-py_test(
-    name = "run_deid_lib_test",
-    srcs = ["run_deid_lib_test.py"],
-    data = [
-        "//dlp/mae_testdata:sample.dtd",
-        "//dlp/mae_testdata:sample.xml",
-        "//dlp/testdata:config.json",
-        "//dlp/testdata:request.json",
-    ],
-    deps = [
-        ":run_deid",
-        "//common:testutil",
-        requirement("apache_beam"),
-    ],
+proto_library(
+    name = "results_proto",
+    srcs = ["results.proto"],
+)
+
+py_proto_library(
+    name = "results_py_pb2",
+    protos = ["results.proto"],
 )

@@ -83,12 +83,12 @@ bazel-bin/dlp/run_deid \
 ## Config file
 
 --deid_config_file specifies a json file (example in [sample_deid_config.json](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/sample_deid_config.json))
-that contains an object with two fields:
+that contains an object with four fields:
 
-1. deidConfig: A [DeidentifyConfig](https://cloud.google.com/dlp/docs/reference/rest/v2beta1/content/deidentify#DeidentifyConfig)
+`deidConfig`: A [DeidentifyConfig](https://cloud.google.com/dlp/docs/reference/rest/v2beta1/content/deidentify#DeidentifyConfig)
 for use with the DLP API's content.deidentify method.
 
-2. infoTypeCategories: A list of tags to use in the MAE output and the infoTypes
+`infoTypeCategories`: A list of tags to use in the MAE output and the infoTypes
 from the deidConfig that correspond to those tags. Each entry in the list has a
 name, and a list of infoTypes, e.g.:
 
@@ -98,6 +98,16 @@ name, and a list of infoTypes, e.g.:
   "infoTypes": ["US_FEMALE_NAME", "US_MALE_NAME"]
 }
 ```
+
+`perRowTypes`: A list of columnName/infoTypeName pairs. For each inspect() and
+deid() call, for each row, we take the value from the specified column and add
+it as a custom infoType with the given name.
+
+`perDatasetTypes`: Similar to perRowTypes, but does a pre-processing step where
+it runs through the entire dataset and gets *all* the values for the given
+column(s). These are then passed to every inspect() and deid() request as
+custom infoTypes.
+
 
 ## MAE Format
 

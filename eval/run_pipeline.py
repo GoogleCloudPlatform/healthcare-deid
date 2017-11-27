@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Run Google Data Loss Prevention API DeID.
+"""Evaluate DeID findings against a 'golden' baseline.
 
 All input/output files should be on Google Cloud Storage.
 
@@ -27,40 +27,32 @@ import argparse
 import logging
 import sys
 
-from google.cloud import storage
-from dlp import run_deid_lib
+from eval import run_pipeline_lib
 import google.auth
-from google.cloud import bigquery
 
 
 def main():
   logging.getLogger().setLevel(logging.INFO)
 
   parser = argparse.ArgumentParser(
-      description='Run Data Loss Prevention (DLP) DeID on Google Cloud.')
-  run_deid_lib.add_all_args(parser)
+      description='Evaluate DeID findings on Google Cloud.')
+  run_pipeline_lib.add_all_args(parser)
   args, pipeline_args = parser.parse_known_args(sys.argv[1:])
   # --project is used both as a local arg and a pipeline arg, so parse it, then
   # add it to pipeline_args as well.
   pipeline_args += ['--project', args.project]
 
   credentials, _ = google.auth.default()
-  bq_client = bigquery.Client(project=args.project)
-  bq_config_fn = None
-  if hasattr(bigquery.job, 'QueryJobConfig'):
-    bq_config_fn = bigquery.job.QueryJobConfig
 
-  errors = run_deid_lib.run_pipeline(
-      args.input_query, args.input_table, args.deid_table, args.findings_table,
-      args.annotated_notes_table, args.mae_dir, args.deid_config_file,
-      args.mae_task_name, credentials, args.project, storage.Client, bq_client,
-      bq_config_fn, args.dlp_api_name, pipeline_args)
+  errors = run_pipeline_lib.run_pipeline(
+      args.mae_input_pattern, args.mae_golden_dir, args.results_dir,
+      credentials, args.project, pipeline_args)
 
   if errors:
     logging.error(errors)
     return 1
 
-  logging.info('Ran DLP API DeID.')
+  logging.info('Ran eval.')
 
 if __name__ == '__main__':
   main()

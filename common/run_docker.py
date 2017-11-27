@@ -23,11 +23,10 @@ from __future__ import absolute_import
 import functools
 import logging
 from multiprocessing.pool import ThreadPool
-import os
-import re
 import time
 
 from apiclient import discovery
+from common import gcsutil
 import google.auth
 
 POLL_INTERVAL_SECONDS = 5
@@ -116,38 +115,6 @@ def run_docker(commands, project_id, log_directory, docker_image_name, inputs,
     exceptions.append('error: %s' % operation['error']['message'])
 
 
-def _find_files(pattern, storage_client):
-  """Find files on GCS matching the given pattern."""
-  # Split the input path to get the bucket name and the path within the bucket.
-  re_match = re.match(r'gs://([\w-]+)/(.*)', pattern)
-  if not re_match or len(re_match.groups()) != 2:
-    logging.error('Failed to parse input pattern: "%s". Expected: '
-                  'gs://bucket-name/path/to/file', pattern)
-    return
-  bucket_name = re_match.group(1)
-  file_pattern = re_match.group(2)
-
-  # The storage client doesn't take a pattern, just a prefix, so we presume here
-  # that the only special/regex-like characters used are '?' and '*', and take
-  # the longest prefix that doesn't contain either of those.
-  file_prefix = file_pattern
-  re_result = re.search(r'(.*?)[\?|\*]', file_pattern)
-  if re_result:
-    file_prefix = re_result.group(1)
-
-  # Convert file_pattern to a regex by escaping the string, explicitly
-  # converting the characters we want to treat specially (* and ?), and
-  # appending '\Z' to the end of the pattern so we match only the full string.
-  file_pattern_as_regex = (
-      re.escape(file_pattern).replace('\\*', '.*').replace('\\?', '.') + r'\Z')
-
-  bucket = storage_client.lookup_bucket(bucket_name)
-  for blob in bucket.list_blobs(prefix=file_prefix):
-    if not re.match(file_pattern_as_regex, blob.name):
-      continue
-    yield os.path.join('gs://', bucket_name, blob.name)
-
-
 def run_pipeline(input_pattern, function, args, max_num_threads,
                  storage_client, credentials):
   """Find files and run the given function on them.
@@ -169,8 +136,9 @@ def run_pipeline(input_pattern, function, args, max_num_threads,
   args.append(credentials)
   args.append(exceptions)
   found_files = False
-  for file_path in _find_files(input_pattern, storage_client):
+  for f in gcsutil.find_files(input_pattern, storage_client):
     found_files = True
+    file_path = f.string()
     logging.info('Found matching file: %s', file_path)
     args_copy = args[:]
     args_copy.insert(0, file_path)

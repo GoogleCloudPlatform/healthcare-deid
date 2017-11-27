@@ -12,30 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
 licenses(["notice"])  # Apache License 2.0
 
-py_library(
-    name = "run_docker",
-    srcs = ["run_docker.py"],
-    deps = [":gcsutil"],
-)
-
-py_test(
-    name = "run_docker_test",
-    srcs = ["run_docker_test.py"],
-    deps = [":run_docker"],
-)
-
-py_library(
-    name = "gcsutil",
-    srcs = ["gcsutil.py"],
-)
-
-py_library(
-    name = "testutil",
-    srcs = ["testutil.py"],
-)
+exports_files(["requirements.txt"])

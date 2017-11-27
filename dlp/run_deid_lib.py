@@ -23,18 +23,18 @@ pip install --upgrade google-api-python-client
 
 from __future__ import absolute_import
 
+import collections
 import copy
 from functools import partial
 import json
 import logging
 import os
+import uuid
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apiclient import discovery
-from google.cloud import storage
 from dlp import mae
-import google.auth
 
 
 def get_deid_text(deid_response):
@@ -45,11 +45,31 @@ def get_deid_text(deid_response):
   }
 
 
-def deid(credentials, deid_config, inspect_config, dlp_api_name, row):
+def _per_row_inspect_config(inspect_config, per_row_types, row):
+  """Return a copy of inspect_config with the given per-row types added."""
+  if not per_row_types:
+    return inspect_config
+
+  inspect_config = copy.deepcopy(inspect_config)
+  if 'customInfoTypes' not in inspect_config:
+    inspect_config['customInfoTypes'] = []
+  for per_row_type in per_row_types:
+    col = per_row_type['columnName']
+    if col not in row:
+      raise Exception('customInfoType column "{}" not found.'.format(col))
+    inspect_config['customInfoTypes'].append({
+        'infoType': {'name': per_row_type['infoTypeName']},
+        'dictionary': {'wordList': {'words': [row[col]]}}
+    })
+  return inspect_config
+
+
+def deid(credentials, deid_config, inspect_config, per_row_types, dlp_api, row):
   """Put the data through the DLP API DeID."""
-  dlp = discovery.build(dlp_api_name, 'v2beta1', credentials=credentials)
+  dlp = discovery.build(dlp_api, 'v2beta1', credentials=credentials)
   content = dlp.content()
 
+  inspect_config = _per_row_inspect_config(inspect_config, per_row_types, row)
   req_body = {
       'deidentifyConfig': deid_config,
       'inspectConfig': inspect_config,
@@ -72,11 +92,12 @@ def deid(credentials, deid_config, inspect_config, dlp_api_name, row):
   }
 
 
-def inspect(credentials, inspect_config, dlp_api_name, row):
+def inspect(credentials, inspect_config, per_row_types, dlp_api, row):
   """Put the data through the DLP API DeID inspect method."""
-  dlp = discovery.build(dlp_api_name, 'v2beta1', credentials=credentials)
+  dlp = discovery.build(dlp_api, 'v2beta1', credentials=credentials)
   content = dlp.content()
 
+  inspect_config = _per_row_inspect_config(inspect_config, per_row_types, row)
   req_body = {
       'inspectConfig': inspect_config,
       'items': [
@@ -168,9 +189,9 @@ def split_gcs_name(gcs_path):
   return bucket, blob
 
 
-def write_mae(project, credentials, mae_dir, mae_result):
+def write_mae(mae_result, storage_client_fn, project, credentials, mae_dir):
   """Write the MAE results to GCS."""
-  storage_client = storage.Client(project, credentials)
+  storage_client = storage_client_fn(project, credentials)
   filename = '{0}-{1}.xml'.format(
       mae_result.patient_id, mae_result.record_number)
   bucket_name, blob_dir = split_gcs_name(mae_dir)
@@ -179,8 +200,10 @@ def write_mae(project, credentials, mae_dir, mae_result):
   blob.upload_from_string(mae_result.mae_xml)
 
 
-def write_dtd(storage_client, mae_dir, mae_tag_categories, task_name):
+def write_dtd(storage_client_fn, project, credentials, mae_dir,
+              mae_tag_categories, task_name):
   """Write the DTD config file."""
+  storage_client = storage_client_fn(project, credentials)
   dtd_contents = mae.generate_dtd(mae_tag_categories, task_name)
   bucket_name, blob_dir = split_gcs_name(mae_dir)
   bucket = storage_client.get_bucket(bucket_name)
@@ -188,25 +211,133 @@ def write_dtd(storage_client, mae_dir, mae_tag_categories, task_name):
   blob.upload_from_string(dtd_contents)
 
 
+def generate_configs(config_text, input_query=None, input_table=None,
+                     bq_client=None, bq_config_fn=None):
+  """Generate DLP API configs based on the input config file."""
+  mae_tag_categories = {}
+  per_row_types = []
+  cfg = json.loads(config_text, object_pairs_hook=collections.OrderedDict)
+  deid_config = cfg['deidConfig'] if 'deidConfig' in cfg else {}
+  if 'infoTypeCategories' in cfg:
+    mae_tag_categories = cfg['infoTypeCategories']
+  if 'perRowTypes' in cfg:
+    per_row_types = cfg['perRowTypes']
+
+  # Generate an inspectConfig based on all the infoTypes listed in the deid
+  # config's transformations.
+  info_types = set()
+  if deid_config:
+    for transform in deid_config['infoTypeTransformations']['transformations']:
+      info_types |= set([t['name'] for t in transform['infoTypes']])
+  inspect_config = {'infoTypes': [{'name': t} for t in info_types]}
+
+  per_dataset_types = []
+  if 'perDatasetTypes' in cfg and bq_client:
+    per_dataset_types = cfg['perDatasetTypes']
+    custom_info_types = _load_per_dataset_types(
+        per_dataset_types, input_query, input_table, bq_client, bq_config_fn)
+    inspect_config['customInfoTypes'] = custom_info_types
+
+  return (inspect_config, deid_config, mae_tag_categories, per_row_types,
+          per_dataset_types)
+
+
+def _load_per_dataset_types(per_dataset_cfg, input_query, input_table,
+                            bq_client, bq_config_fn):
+  """Load data that applies to the whole dataset as custom info types."""
+  custom_info_types = []
+
+  saved_query_objects = []
+  old_api = hasattr(bq_client, 'run_async_query')
+  # Generate the query based on the config options.
+  for type_config in per_dataset_cfg:
+    query = ''
+    if 'bqQuery' in type_config:
+      query = type_config['bqQuery']
+    elif 'bqTable' in type_config or input_table:
+      table = input_table
+      if 'bqTable' in type_config:
+        table = type_config['bqTable']
+      columns = [t['columnName'] for t in type_config['infoTypes']]
+      query = 'SELECT %s FROM [%s]' % (
+          ','.join(columns), table.replace(':', '.'))
+    else:
+      query = input_query
+
+    query_job = None
+    if old_api:
+      query_job = bq_client.run_async_query(str(uuid.uuid4()), query)
+      query_job.begin()
+    else:
+      job_config = bq_config_fn()
+      job_config.use_legacy_sql = True
+      query_job = bq_client.query(query, job_config=job_config)
+    saved_query_objects.append((query_job, type_config))
+
+  for query_job, type_config in saved_query_objects:
+    if old_api:
+      query_job.result()  # Wait for the job to complete.
+      query_job.destination.reload()
+      results_table = query_job.destination.fetch_data()
+    else:
+      results_table = query_job.result()  # Wait for the job to complete.
+
+    # Read the results.
+    field_indexes = {}
+    if old_api:
+      for info_type in type_config['infoTypes']:
+        field_indexes[info_type['columnName']] = -1
+      i = 0
+      for entry in results_table.schema:
+        if entry.name in field_indexes:
+          field_indexes[entry.name] = i
+        i += 1
+
+    type_to_words = collections.defaultdict(set)
+    has_results = False
+    for row in results_table:
+      has_results = True
+      if not old_api and not hasattr(row, 'get'):
+        # Workaround for google-cloud-bigquery==0.28.0, which is the latest
+        # version as of 2017-11-20.
+        field_indexes = row._xxx_field_to_index  # pylint: disable=protected-access
+      for info_type in type_config['infoTypes']:
+        column_name = info_type['columnName']
+        value = None
+        if old_api or not hasattr(row, 'get'):
+          value = row[field_indexes[column_name]]
+        else:
+          value = row.get(column_name)
+        type_to_words[info_type['infoTypeName']].add(value)
+
+    if not has_results:
+      raise Exception('No results for query: "{0}"'.format(query_job.query))
+
+    # Generate custom info types based on the results.
+    for info_type_name, words in type_to_words.iteritems():
+      custom_info_types.append({
+          'infoType': {'name': info_type_name},
+          'dictionary': {'wordList': {'words': list(words)}}
+      })
+
+  return custom_info_types
+
+
 def run_pipeline(input_query, input_table, deid_table, findings_table,
                  annotated_notes_table, mae_dir, deid_config_file, task_name,
-                 project, credentials, dlp_api_name, pipeline_args):
+                 credentials, project, storage_client_fn, bq_client,
+                 bq_config_fn, dlp_api_name, pipeline_args):
   """Read the records from BigQuery, DeID them, and write them to BigQuery."""
   if (input_query is None) == (input_table is None):
     return 'Exactly one of input_query and input_table must be set.'
-  deid_config = {}
-  mae_tag_categories = {}
+  config_text = ''
   if deid_config_file:
     with open(deid_config_file) as f:
-      cfg = json.load(f)
-      deid_config = cfg['deidConfig']
-      if 'infoTypeCategories' in cfg:
-        mae_tag_categories = cfg['infoTypeCategories']
+      config_text = f.read()
 
-  info_types = set()
-  for transform in deid_config['infoTypeTransformations']['transformations']:
-    info_types |= set([t['name'] for t in transform['infoTypes']])
-  inspect_config = {'infoTypes': [{'name': t} for t in info_types]}
+  (inspect_config, deid_config, mae_tag_categories, per_row_types,
+   per_dataset_types) = generate_configs(
+       config_text, input_query, input_table, bq_client, bq_config_fn)
 
   p = beam.Pipeline(options=PipelineOptions(pipeline_args))
   reads = None
@@ -221,8 +352,9 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if findings_table or annotated_notes_table or mae_dir:
     inspect_data = (
         reads |
-        'inspect' >> beam.Map(partial(
-            inspect, credentials, inspect_config, dlp_api_name)))
+        'inspect' >> beam.Map(
+            partial(inspect, credentials, inspect_config, per_row_types,
+                    dlp_api_name)))
   if findings_table:
     # Call inspect and write the result to BigQuery.
     _ = (inspect_data
@@ -242,23 +374,36 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if mae_dir:
     if not mae_dir.startswith('gs://'):
       return ['--mae_dir must be a GCS path starting with "gs://".']
-    if not credentials:
-      credentials, _ = google.auth.default()
-    client = storage.Client(project, credentials)
-    write_dtd(client, mae_dir, mae_tag_categories, task_name)
+    write_dtd(storage_client_fn, project, credentials, mae_dir,
+              mae_tag_categories, task_name)
     _ = (inspect_data
          | 'generate_mae' >> beam.Map(
              partial(mae.generate_mae, task_name, mae_tag_categories))
          | 'write_mae' >> beam.Map(
-             partial(write_mae, project, credentials, mae_dir)))
+             write_mae, storage_client_fn, project, credentials, mae_dir))
   if deid_table:
+    if per_row_types or per_dataset_types:
+      all_custom_info_types = per_row_types[:]
+      for per_dataset_type in per_dataset_types:
+        all_custom_info_types += per_dataset_type['infoTypes']
+      # Add a basic transform for the custom infoTypes. Note that this must be
+      # done after creating the inspectConfig above, since the custom infoTypes
+      # can't be listed in the inspectConfig.
+      transform = {
+          'infoTypes': [
+              {'name': t['infoTypeName']} for t in all_custom_info_types],
+          'primitiveTransformation': {'replaceWithInfoTypeConfig': {}}
+      }
+      deid_config['infoTypeTransformations']['transformations'].append(
+          transform)
     if not deid_config_file:
       return ['Must set --deid_config_file when --deid_table is set.']
     # Call deidentify and write the result to BigQuery.
     _ = (reads
          | 'deid' >> beam.Map(
-             partial(deid, credentials, deid_config, inspect_config,
-             dlp_api_name))
+             partial(deid,
+                     credentials, deid_config, inspect_config, per_row_types,
+                     dlp_api_name))
          | 'get_deid_text' >> beam.Map(get_deid_text)
          | 'write_deid_text' >> beam.io.Write(beam.io.BigQuerySink(
              deid_table,

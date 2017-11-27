@@ -173,15 +173,37 @@
     },
     {
       "name": "FIRST_NAME",
-      "infoTypes": ["US_FEMALE_NAME", "US_MALE_NAME"]
+      "infoTypes": [
+        "US_FEMALE_NAME", "US_MALE_NAME", "KnownFirstName", "DatasetFirstName"
+      ]
     },
     {
       "name": "LAST_NAME",
-      "infoTypes": []
+      "infoTypes": ["KnownLastName"]
     },
     {
       "name": "UNKNOWN_CLASSIFICATION_TYPE",
       "infoTypes": []
+    }
+  ],
+  "perRowTypes": [
+    {
+      "columnName": "first_name",
+      "infoTypeName": "KnownFirstName"
+    },
+    {
+      "columnName": "last_name",
+      "infoTypeName": "KnownLastName"
+    }
+  ],
+  "perDatasetTypes": [
+    {
+      "infoTypes": [
+        {
+          "columnName": "first_name",
+          "infoTypeName": "DatasetFirstName"
+        }
+      ]
     }
   ]
 }

@@ -1,0 +1,72 @@
+/*
+ * Copyright 2017 Google Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package third_party.py.eval;
+
+message Results {
+  // Aggregate results for strict entity matching comparison.
+  AggregateMatchingResults strict_entity_matching_results = 1;
+
+  // Aggregate results for binary token matching comparison.
+  AggregateMatchingResults binary_token_matching_results = 2;
+
+  // Per-note binary token matching results.
+  repeated IndividualResult individual_binary_token_matching_results = 3;
+}
+
+message AggregateMatchingResults {
+  // TP, FP, FN (true/false positive/negatives) are summed across the individual
+  // metrics and used in aggregate to calculate these scores.
+  Stats micro_average_results = 1;
+  // The results are the average of all the individually-calculated results
+  // (e.g. precision is the mean of all the individual precision scores).
+  // true_positive, false_positive, and false_negative are not used here.
+  Stats macro_average_results = 2;
+}
+
+message Stats {
+  // Number of correct PII detections
+  int32 true_positives = 1;
+
+  // Number of incorrect PII detections
+  int32 false_positives = 2;
+
+  // Number of PII detections that were missed
+  int32 false_negatives = 3;
+
+  // Precision =  True Positives / (True Positives + False Positives)
+  float precision = 4;
+
+  // Recall =  True Positives / (True Positives + False Negatives)
+  float recall = 5;
+
+  // F-Score = Harmonic mean of precision and recall
+  float f_score = 6;
+
+  // If an error occurred, this will contain an explanation.
+  string error_message = 7;
+}
+
+message IndividualResult {
+  // String that uniquely identifies the record (e.g. patient ID +
+  // record number).
+  string record_id = 1;
+
+  // The raw data and derived data.
+  Stats stats = 2;
+}

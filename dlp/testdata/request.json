@@ -1,0 +1,39 @@
+{
+  "deidentifyConfig": {
+    "infoTypeTransformations": {
+      "transformations": [
+        {
+          "infoTypes": [{"name": "PHONE_NUMBER"},
+                        {"name": "US_CENSUS_NAME"},
+                        {"name": "US_FEMALE_NAME"},
+                        {"name": "US_MALE_NAME"}],
+          "primitiveTransformation": {"replaceWithInfoTypeConfig": {}}
+        },
+        {
+          "infoTypes": [{"name": "KnownFirstName"},
+                        {"name": "KnownLastName"},
+                        {"name": "DatasetFirstName"}],
+          "primitiveTransformation": {"replaceWithInfoTypeConfig": {}}
+        }
+      ]
+    }
+  },
+
+  "inspectConfig": {
+    "infoTypes": [{"name": "PHONE_NUMBER"},
+                  {"name": "US_CENSUS_NAME"},
+                  {"name": "US_FEMALE_NAME"},
+                  {"name": "US_MALE_NAME"}],
+    "customInfoTypes": [
+      {"dictionary":
+       {"wordList": {"words": ["Boaty"]}},
+       "infoType": {"name": "DatasetFirstName"}},
+      {"dictionary":
+       {"wordList": {"words": ["Boaty"]}},
+       "infoType": {"name": "KnownFirstName"}},
+      {"dictionary":
+       {"wordList": {"words": ["McBoatface"]}},
+       "infoType": {"name": "KnownLastName"}}]},
+
+ "items": [{"value": "text and PID and MORE PID", "type": "text/plain"}]
+}
