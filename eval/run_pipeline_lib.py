@@ -29,13 +29,24 @@ from eval import results_pb2
 
 
 class Finding(object):
-  """Class to hold category and span of a PHI finding."""
+  """Class to hold category, span, and text of a PHI finding."""
 
-  def __init__(self, category, spans):
+  def __init__(self, category, start, end, text):
     self.category = category
+    self.start = start
+    self.end = end
+    self.text = text
+
+  @classmethod
+  def from_tag(cls, category, spans, full_text):
     startstr, endstr = spans.split('~')
-    self.start = int(startstr)
-    self.end = int(endstr)
+    start = int(startstr)
+    end = int(endstr)
+    if start >= end:
+      raise Exception('Invalid span "{}"'.format(spans))
+    if end > len(full_text):
+      raise Exception('Span "{}" out of range.'.format(spans))
+    return cls(category, start, end, full_text[start:end])
 
   def __hash__(self):
     return hash((self.category, self.start, self.end))
@@ -44,16 +55,22 @@ class Finding(object):
     return (self.category == other.category and self.start == other.start and
             self.end == other.end)
 
+  def __repr__(self):
+    return '{}: {}~{} "{}"'.format(
+        self.category, self.start, self.end, self.text)
+
 
 def _get_findings(filename, storage_client):
+  """Parse findings from the given MAE XML file."""
   bucket = storage_client.lookup_bucket(filename.bucket)
   blob = bucket.get_blob(filename.blob)
   contents = blob.download_as_string()
   tree = XmlTree.fromstring(contents)
+  text = tree.find('TEXT').text
   findings = set()
   if tree.find('TAGS') is not None:
     for tag_elem in tree.find('TAGS'):
-      findings.add(Finding(tag_elem.tag, tag_elem.get('spans')))
+      findings.add(Finding.from_tag(tag_elem.tag, tag_elem.get('spans'), text))
   return findings
 
 
@@ -95,6 +112,48 @@ def calculate_stats(stats):
     stats.error_message += 'f-score is NaN'
 
 
+def tokenize_finding(finding):
+  """Turn the finding into multiple findings split by whitespace."""
+  tokenized = set()
+  tokens = finding.text.split()
+  cursor = 0
+  # Note that finding.start and finding.end refer to the location in the overall
+  # text, but finding.text is just the text for this finding.
+  for token in tokens:
+    start = finding.text.find(token, cursor)
+    cursor = end = start + len(token)
+    tokenized.add(Finding(
+        None, start + finding.start, end + finding.start, token))
+  return tokenized
+
+
+def tokenize_set(findings):
+  tokenized = set()
+  findings = list(findings)
+  for f in findings:
+    tokenized |= tokenize_finding(f)
+
+  return tokenized
+
+
+def count_matches(findings, golden_findings, record_id):
+  """Calculate the true/false positive/negatives for the given findings."""
+  result = results_pb2.IndividualResult()
+  result.record_id = record_id
+  for finding in findings:
+    if finding in golden_findings:
+      result.stats.true_positives += 1
+    else:
+      result.stats.false_positives += 1
+
+  for golden_finding in golden_findings:
+    if golden_finding not in findings:
+      result.stats.false_negatives += 1
+
+  calculate_stats(result.stats)
+  return result
+
+
 def compare(filename, golden_dir, project, credentials):
   """Load data from the file and the golden file and compare.
 
@@ -117,22 +176,15 @@ def compare(filename, golden_dir, project, credentials):
   if record_id.endswith('.xml'):
     record_id = record_id[:-4]
 
-  # Strict entity matching calculations.
-  strict_entity_results = results_pb2.IndividualResult()
-  strict_entity_results.record_id = record_id
-  for finding in findings:
-    if finding in golden_findings:
-      strict_entity_results.stats.true_positives += 1
-    else:
-      strict_entity_results.stats.false_positives += 1
+  strict_entity_results = count_matches(findings, golden_findings, record_id)
 
-  for golden_finding in golden_findings:
-    if golden_finding not in findings:
-      strict_entity_results.stats.false_negatives += 1
+  # Binary token matching calculations.
+  tokenized_findings = tokenize_set(findings)
+  tokenized_goldens = tokenize_set(golden_findings)
+  binary_token_results = count_matches(
+      tokenized_findings, tokenized_goldens, record_id)
 
-  calculate_stats(strict_entity_results.stats)
-
-  return strict_entity_results
+  return strict_entity_results, binary_token_results
 
 
 class _MacroStats(object):
@@ -159,60 +211,107 @@ class _MacroStats(object):
     return stats
 
 
+class AccumulatedResults(object):
+  """Accumulates micro and macro averages."""
+
+  def __init__(self):
+    self.micro = results_pb2.Stats()
+    self.macro = _MacroStats()
+
+  def add_result(self, result):
+    self.micro.true_positives += result.stats.true_positives
+    self.micro.false_positives += result.stats.false_positives
+    self.micro.false_negatives += result.stats.false_negatives
+
+    if (math.isnan(result.stats.precision) or
+        math.isnan(result.stats.recall)):
+      self.macro.error_message += 'Ignored results for {0} '.format(
+          result.record_id)
+      logging.warning('Macro average ignoring results for %s', result.record_id)
+    else:
+      self.macro.count += 1
+      self.macro.precision_sum += result.stats.precision
+      self.macro.recall_sum += result.stats.recall
+
+  def __add__(self, other):
+    new = AccumulatedResults()
+    new.micro.true_positives = (
+        self.micro.true_positives + other.micro.true_positives)
+    new.micro.false_positives = (
+        self.micro.false_positives + other.micro.false_positives)
+    new.micro.false_negatives = (
+        self.micro.false_negatives + other.micro.false_negatives)
+
+    new.macro.count = self.macro.count + other.macro.count
+    new.macro.precision_sum = (
+        self.macro.precision_sum + other.macro.precision_sum)
+    new.macro.recall_sum = self.macro.recall_sum + other.macro.recall_sum
+    new.macro.error_message = (
+        self.macro.error_message + other.macro.error_message)
+    return new
+
+
+class OverallResults(object):
+  """Class to hold and accumulate the summarized results to output."""
+
+  def __init__(self):
+    self.strict_entity_matching = AccumulatedResults()
+    self.binary_token_matching = AccumulatedResults()
+
+  def __add__(self, other):
+    new = OverallResults()
+    new.strict_entity_matching = (
+        self.strict_entity_matching + other.strict_entity_matching)
+    new.binary_token_matching = (
+        self.binary_token_matching + other.binary_token_matching)
+    return new
+
+  def to_results_proto(self):
+    """Convert to results_pb2.Results."""
+    results = results_pb2.Results()
+    calculate_stats(self.strict_entity_matching.micro)
+    results.strict_entity_matching_results.micro_average_results.CopyFrom(
+        self.strict_entity_matching.micro)
+    results.strict_entity_matching_results.macro_average_results.CopyFrom(
+        self.strict_entity_matching.macro.calculate_stats())
+
+    calculate_stats(self.binary_token_matching.micro)
+    results.binary_token_matching_results.micro_average_results.CopyFrom(
+        self.binary_token_matching.micro)
+    results.binary_token_matching_results.macro_average_results.CopyFrom(
+        self.binary_token_matching.macro.calculate_stats())
+
+    return results
+
+
 class CombineResultsFn(beam.CombineFn):
   """CombineFn to take individual results and aggregate them."""
 
   def create_accumulator(self):
-    return results_pb2.Stats(), _MacroStats()
+    return OverallResults()
 
-  def add_input(self, averages, individual_result):
-    micro_average, macro_average = averages
-    micro_average.true_positives += individual_result.stats.true_positives
-    micro_average.false_positives += individual_result.stats.false_positives
-    micro_average.false_negatives += individual_result.stats.false_negatives
+  def add_input(self, overall_results, individual_results):
+    strict_entity_result, binary_token_result = individual_results
+    overall_results.strict_entity_matching.add_result(strict_entity_result)
+    overall_results.binary_token_matching.add_result(binary_token_result)
 
-    if (math.isnan(individual_result.stats.precision) or
-        math.isnan(individual_result.stats.recall)):
-      macro_average.error_message += 'Ignored results for {0} '.format(
-          individual_result.record_id)
-      logging.warning('Macro average ignoring results for %s',
-                      individual_result.record_id)
-    else:
-      macro_average.count += 1
-      macro_average.precision_sum += individual_result.stats.precision
-      macro_average.recall_sum += individual_result.stats.recall
-
-    return micro_average, macro_average
+    return overall_results
 
   def merge_accumulators(self, accumulators):
-    micros, macros = zip(*accumulators)
-    micro_total = results_pb2.Stats()
-    for micro in micros:
-      micro_total.true_positives += micro.true_positives
-      micro_total.false_positives += micro.false_positives
-      micro_total.false_negatives += micro.false_negatives
-    macro_total = _MacroStats()
-    for macro in macros:
-      macro_total.count += macro.count
-      macro_total.precision_sum += macro.precision_sum
-      macro_total.recall_sum += macro.recall_sum
-      macro_total.error_message += macro.error_message
-    return micro_total, macro_total
+    overall_results = OverallResults()
+    for a in accumulators:
+      overall_results += a
+    return overall_results
 
-  def extract_output(self, averages):
-    micro_average, macro_average = averages
-    calculate_stats(micro_average)
-    return micro_average, macro_average.calculate_stats()
+  def extract_output(self, overall_results):
+    if overall_results is None:
+      return None
+    return overall_results.to_results_proto()
 
 
-def write_aggregate_results(stats, results_dir, project, credentials):
+def write_aggregate_results(results, results_dir, project, credentials):
   """Write the aggregate results to results_dir."""
   storage_client = storage.Client(project, credentials)
-  micro, macro = stats
-
-  results = results_pb2.Results()
-  results.strict_entity_matching_results.micro_average_results.CopyFrom(micro)
-  results.strict_entity_matching_results.macro_average_results.CopyFrom(macro)
 
   logging.info('Aggregate results:\n%s', results)
 

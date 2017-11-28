@@ -30,7 +30,7 @@ from google.protobuf import text_format
 
 xml_template = """<?xml version="1.0" encoding="UTF-8" ?>
 <InspectPhiTask>
-<TEXT><![CDATA[some text]]></TEXT>
+<TEXT><![CDATA[word1   w2 w3  wrd4 5 word6   word7 multi token entity]]></TEXT>
 <TAGS>
 {0}
 </TAGS></InspectPhiTask>
@@ -76,7 +76,7 @@ class RunPipelineLibTest(unittest.TestCase):
     tp_tag = tag_template.format('TypeA', 0, 5)
     fp_tag = tag_template.format('TypeA', 8, 10)
     fn_tag = tag_template.format('TypeA', 11, 13)
-    fn2_tag = tag_template.format('TypeA', 14, 15)
+    fn2_tag = tag_template.format('TypeA', 15, 19)
     findings_tags = '\n'.join([tp_tag, fp_tag])
     golden_tags = '\n'.join([tp_tag, fn_tag, fn2_tag])
     testutil.set_gcs_file('bucketname/input/file.xml',
@@ -85,10 +85,19 @@ class RunPipelineLibTest(unittest.TestCase):
                           xml_template.format(golden_tags))
 
     tp2_tag = tag_template.format('TypeB', 20, 21)
-    entity_fp_tag = tag_template.format('TypeX', 30, 31)
-    entity_fn_tag = tag_template.format('TypeY', 30, 31)
-    findings_tags = '\n'.join([tp_tag, tp2_tag, entity_fp_tag])
-    golden_tags = '\n'.join([tp_tag, tp2_tag, entity_fn_tag])
+    # False negative + false positive for entity matching, but true positive for
+    # binary token matching.
+    entity_fp_tag = tag_template.format('TypeX', 30, 35)
+    entity_fn_tag = tag_template.format('TypeY', 30, 35)
+    # Two tokens are tagged as one in the golden. This is not a match for entity
+    # matching, but is two matches for binary token matching.
+    partial_tag1 = tag_template.format('TypeA', 36, 41)
+    partial_tag2 = tag_template.format('TypeA', 42, 47)
+    partial_tag3 = tag_template.format('TypeA', 48, 54)
+    multi_token_tag = tag_template.format('TypeA', 36, 54)
+    findings_tags = '\n'.join([tp_tag, tp2_tag, entity_fp_tag, partial_tag1,
+                               partial_tag2, partial_tag3])
+    golden_tags = '\n'.join([tp_tag, tp2_tag, entity_fn_tag, multi_token_tag])
     testutil.set_gcs_file('bucketname/input/file2.xml',
                           xml_template.format(findings_tags))
     testutil.set_gcs_file('bucketname/goldens/file2.xml',
@@ -99,19 +108,33 @@ class RunPipelineLibTest(unittest.TestCase):
     expected_text = """strict_entity_matching_results {
   micro_average_results {
     true_positives: 3
-    false_positives: 2
-    false_negatives: 3
-    precision: 0.6
-    recall: 0.5
-    f_score: 0.545454545455
+    false_positives: 5
+    false_negatives: 4
+    precision: 0.375
+    recall: 0.428571
+    f_score: 0.4
   }
   macro_average_results {
-    precision: 0.583333333333
-    recall: 0.5
-    f_score: 0.538461538462
+    precision: 0.416667
+    recall: 0.416667
+    f_score: 0.416667
   }
 }
-"""
+binary_token_matching_results {
+  micro_average_results {
+    true_positives: 7
+    false_positives: 1
+    false_negatives: 2
+    precision: 0.875
+    recall: 0.777778
+    f_score: 0.823529
+  }
+  macro_average_results {
+    precision: 0.75
+    recall: 0.666667
+    f_score: 0.705882
+  }
+}"""
     expected_results = results_pb2.Results()
     text_format.Merge(expected_text, expected_results)
     results = results_pb2.Results()
@@ -161,6 +184,26 @@ class RunPipelineLibTest(unittest.TestCase):
     self.assertTrue(math.isnan(stats.precision))
     self.assertTrue(math.isnan(stats.recall))
     self.assertTrue(math.isnan(stats.f_score))
+
+  def testTokenizeSet(self):
+    finding = run_pipeline_lib.Finding
+    findings = set([finding('TYPE_A', 0, 2, 'hi'),
+                    finding('TYPE_A', 4, 14, 'two tokens'),
+                    finding('TYPE_A', 20, 38, 'three\tmore  tokens')])
+    tokenized = run_pipeline_lib.tokenize_set(findings)
+    expected_tokenized = set([finding(None, 0, 2, 'hi'),
+                              finding(None, 4, 7, 'two'),
+                              finding(None, 8, 14, 'tokens'),
+                              finding(None, 20, 25, 'three'),
+                              finding(None, 26, 30, 'more'),
+                              finding(None, 32, 38, 'tokens')])
+    self.assertEqual(expected_tokenized, tokenized)
+
+  def testInvalidSpans(self):
+    with self.assertRaises(Exception):
+      run_pipeline_lib.Finding.from_tag('invalid', '4~2', 'full text')
+    with self.assertRaises(Exception):
+      run_pipeline_lib.Finding.from_tag('out_of_range', '0~10', 'full text')
 
 if __name__ == '__main__':
   unittest.main()
