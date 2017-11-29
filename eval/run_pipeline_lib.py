@@ -164,7 +164,8 @@ def compare(filename, golden_dir, project, credentials):
     project: project ID used to access the files.
     credentials: credentials used to access the files.
   Returns:
-    results_pb2.IndividualResult
+    (results_pb2.IndividualResult, results_pb2.IndividualResult), where the
+    first is for strict entity matching and the second binary token matching.
   """
   storage_client = storage.Client(project, credentials)
   golden_file = gcsutil.GcsFileName.from_path(
@@ -323,8 +324,13 @@ def write_aggregate_results(results, results_dir, project, credentials):
   blob.upload_from_string(str(results))
 
 
+def get_binary_token_result(entity_and_binary_result_pair):
+  _, binary_token_result = entity_and_binary_result_pair
+  return binary_token_result
+
+
 def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
-                 credentials, project, pipeline_args):
+                 output_per_note_stats, credentials, project, pipeline_args):
   """Evaluate the input files against the goldens."""
   filenames = []
   storage_client = storage.Client(project, credentials)
@@ -336,11 +342,17 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
 
   p = beam.Pipeline(options=PipelineOptions(pipeline_args))
 
-  _ = (p |
-       beam.Create(filenames) |
-       beam.Map(compare, mae_golden_dir, project, credentials) |
+  per_note_results = (p |
+                      beam.Create(filenames) |
+                      beam.Map(compare, mae_golden_dir, project, credentials))
+  _ = (per_note_results |
        beam.CombineGlobally(CombineResultsFn()) |
        beam.Map(write_aggregate_results, results_dir, project, credentials))
+
+  if output_per_note_stats:
+    _ = (per_note_results |
+         beam.Map(get_binary_token_result) |
+         beam.io.WriteToText(os.path.join(results_dir, 'per-note-results')))
 
   result = p.run().wait_until_finish()
 
@@ -359,5 +371,7 @@ def add_all_args(parser):
             'comparison.'))
   parser.add_argument('--results_dir', type=str, required=True,
                       help='Directory to write results to.')
+  parser.add_argument('--output_per_note_stats', type=bool, default=False,
+                      help='Also write per-note binary token matching results.')
   parser.add_argument('--project', type=str, required=True,
                       help='GCP project to run as.')

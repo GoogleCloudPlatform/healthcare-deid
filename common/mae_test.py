@@ -4,7 +4,7 @@ from __future__ import absolute_import
 
 import unittest
 
-from dlp import mae
+from common import mae
 
 
 class MaeTest(unittest.TestCase):
@@ -45,7 +45,7 @@ class MaeTest(unittest.TestCase):
         {'name': 'TagA', 'infoTypes': ['infoTypeA']},
         {'name': 'TagB', 'infoTypes': ['infoTypeUnused']}
     ]
-    result = mae.generate_mae('task_name', mae_tag_categories, inspect_result)
+    result = mae.generate_mae(inspect_result, 'task_name', mae_tag_categories)
     expected = """<?xml version="1.0" encoding="UTF-8" ?>
 <task_name>
 <TEXT><![CDATA[this is the note with the PHI]]></TEXT>

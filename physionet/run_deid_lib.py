@@ -30,7 +30,7 @@ DOCKER_NAME_TEMPLATE = 'gcr.io/%s/physionet:latest'
 
 def run_deid(input_filename, output_directory, config_file, project_id,
              log_directory, dict_directory, lists_directory, service_account,
-             credentials, exceptions):
+             include_original_in_output, credentials, exceptions):
   """Calls Google APIs to run DeID on Docker and waits for the response."""
   output_filename = os.path.join(output_directory,
                                  os.path.basename(input_filename))
@@ -46,6 +46,8 @@ def run_deid(input_filename, output_directory, config_file, project_id,
             ('input', input_filename, 'input.text')]
   outputs = [('output', 'input.res', output_filename),
              ('output phi', 'input.phi', output_filename + '.phi')]
+  if include_original_in_output:
+    outputs.append(('output text', 'input.text', output_filename + '.text'))
   docker_image_name = DOCKER_NAME_TEMPLATE % project_id
   run_docker.run_docker(cmds, project_id, log_directory, docker_image_name,
                         inputs, outputs, service_account, credentials,
@@ -54,13 +56,13 @@ def run_deid(input_filename, output_directory, config_file, project_id,
 
 def run_pipeline(input_pattern, output_directory, config_file, project_id,
                  log_directory, dict_directory, lists_directory,
-                 max_num_threads, service_account='', storage_client=None,
-                 credentials=None):
+                 max_num_threads, include_original_in_output=False,
+                 service_account='', storage_client=None, credentials=None):
   """Find the files in GCS, run DeID on them, and write output to GCS."""
   return run_docker.run_pipeline(
       input_pattern, run_deid,
       [output_directory, config_file, project_id, log_directory, dict_directory,
-       lists_directory, service_account],
+       lists_directory, service_account, include_original_in_output],
       max_num_threads, storage_client, credentials)
 
 
@@ -82,13 +84,18 @@ def add_args(parser):
   parser.add_argument('--max_num_threads', type=int, default=10,
                       help='Run at most this many GCP pipeline jobs at once.')
   parser.add_argument('--service_account', type=str,
-                      help=('Service account that should run de-id job(s).'))
+                      help='Service account that should run de-id job(s).')
+  parser.add_argument('--include_original_in_pn_output', type=bool,
+                      default=False,
+                      help=('If true, include the original note alongside the '
+                            'redacted one in the PhysioNet DeID output.'))
 
 
 # Add arguments that won't be explicitly specified when this module is used as
 # part of a larger program. These args are only needed when this is run as a
 # stand-alone tool.
 def add_all_args(parser):
+  """Add args used when this module is run as a stand-alone tool."""
   add_args(parser)
   parser.add_argument('--input_pattern', type=str, required=True,
                       help=('GCS pattern to read the input file(s) from. '

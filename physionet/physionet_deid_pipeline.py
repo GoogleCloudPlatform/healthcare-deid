@@ -24,6 +24,7 @@ import sys
 from google.cloud import storage
 from physionet import bigquery_to_gcs_lib
 from physionet import gcs_to_bigquery_lib
+from physionet import physionet_to_mae_lib
 from physionet import run_deid_lib
 import google.auth
 
@@ -37,16 +38,40 @@ def add_args(parser):
 def main():
   logging.getLogger().setLevel(logging.INFO)
 
+  # Pre-parse the args to check if we're running the gcs-to-bigquery pipeline,
+  # the physionet-to-mae pipeline, or both, so we can add the correct args.
+  pre_parser = argparse.ArgumentParser(
+      description=('Run Physionet DeID on Google Cloud Platform.'),
+      conflict_handler='resolve')
+  pre_parser.add_argument('--output_table', type=str, required=False,
+                          help='BigQuery table to store output data.')
+  pre_parser.add_argument('--mae_output_dir', type=str, required=False,
+                          help='GCS directory to store output data.')
+  args, _ = pre_parser.parse_known_args(sys.argv[1:])
+  if not args.output_table and not args.mae_output_dir:
+    raise Exception(
+        'Must specify at least one of --output_table or --mae_output_dir')
+  run_mae = args.mae_output_dir is not None
+  run_gcs_to_bq = args.output_table is not None
+
   parser = argparse.ArgumentParser(
       description=('Run Physionet DeID on Google Cloud Platform.'))
   add_args(parser)
-  gcs_to_bigquery_lib.add_args(parser)
+  if args.output_table:
+    gcs_to_bigquery_lib.add_args(parser)
+  if run_mae:
+    # run_deid_lib also adds the --project flag, so don't add it here.
+    physionet_to_mae_lib.add_args(parser, include_project=False)
   run_deid_lib.add_args(parser)
   bigquery_to_gcs_lib.add_args(parser)
   # --project is used both as a local arg (in run_deid) and a pipeline arg (in
   # the bq<->gcs pipelines), so parse it, then add it to pipeline_args as well.
   args, pipeline_args = parser.parse_known_args(sys.argv[1:])
   pipeline_args += ['--project', args.project]
+
+  if run_mae and not args.include_original_in_pn_output:
+    raise Exception('--include_original_in_output must be true when '
+                    '--mae_output_dir is set.')
 
   input_file = os.path.join(args.gcs_working_directory, 'input', 'file')
   bigquery_to_gcs_lib.run_pipeline(args.input_query, input_file, pipeline_args)
@@ -58,22 +83,28 @@ def main():
   credentials, _ = google.auth.default()
   storage_client = storage.Client(args.project, credentials=credentials)
 
-  run_deid_lib.run_pipeline(input_file + '-?????-of-?????', output_dir,
-                            args.config_file, args.project,
-                            os.path.join(args.gcs_working_directory, 'logs'),
-                            dict_directory=args.dict_directory,
-                            lists_directory=args.lists_directory,
-                            max_num_threads=args.max_num_threads,
-                            storage_client=storage_client,
-                            credentials=credentials)
+  run_deid_lib.run_pipeline(
+      input_file + '-?????-of-?????', output_dir, args.config_file,
+      args.project, os.path.join(args.gcs_working_directory, 'logs'),
+      args.dict_directory, args.lists_directory, args.max_num_threads,
+      args.include_original_in_pn_output, storage_client=storage_client,
+      credentials=credentials)
 
   logging.info('Ran PhysioNet DeID and put output in %s', output_dir)
 
-  gcs_to_bigquery_lib.run_pipeline(
-      os.path.join(output_dir, 'file-?????-of-?????'),
-      args.output_table, pipeline_args)
+  if run_gcs_to_bq:
+    gcs_to_bigquery_lib.run_pipeline(
+        os.path.join(output_dir, 'file-?????-of-?????'),
+        args.output_table, pipeline_args)
+    logging.info('Wrote output to %s.', args.output_table)
 
-  logging.info('Run complete. Wrote output to %s.', args.output_table)
+  if run_mae:
+    physionet_to_mae_lib.run_pipeline(
+        os.path.join(output_dir, 'file-?????-of-?????'), args.mae_output_dir,
+        args.mae_task_name, credentials, args.project, pipeline_args)
+    logging.info('Wrote output to %s.', args.mae_output_dir)
+
+  logging.info('Run complete.')
 
 if __name__ == '__main__':
   main()

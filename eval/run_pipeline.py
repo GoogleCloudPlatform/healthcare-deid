@@ -46,7 +46,7 @@ def main():
 
   errors = run_pipeline_lib.run_pipeline(
       args.mae_input_pattern, args.mae_golden_dir, args.results_dir,
-      credentials, args.project, pipeline_args)
+      args.output_per_note_stats, credentials, args.project, pipeline_args)
 
   if errors:
     logging.error(errors)

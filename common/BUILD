@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@my_deps//:requirements.bzl", "requirement")
+
 package(
     default_visibility = ["//visibility:public"],
 )
@@ -31,6 +33,19 @@ py_test(
 )
 
 py_library(
+    name = "mae",
+    srcs = ["mae.py"],
+)
+
+py_test(
+    name = "mae_test",
+    srcs = ["mae_test.py"],
+    deps = [
+        ":mae",
+    ],
+)
+
+py_library(
     name = "gcsutil",
     srcs = ["gcsutil.py"],
 )
@@ -38,4 +53,13 @@ py_library(
 py_library(
     name = "testutil",
     srcs = ["testutil.py"],
+)
+
+py_library(
+    name = "beam_testutil",
+    srcs = ["beam_testutil.py"],
+    deps = [
+        ":testutil",
+        requirement("apache_beam"),
+    ],
 )

@@ -103,11 +103,11 @@ class RunDeidTest(unittest.TestCase):
     self.assertEqual(3, mock_run_deid.call_count)
     mock_run_deid.assert_has_calls([
         call('gs://input/file-00-of-02', 'gs://output', 'my_file.config',
-             'my-project', 'gs://logs', None, None, '', fake_creds, []),
+             'my-project', 'gs://logs', None, None, '', False, fake_creds, []),
         call('gs://input/file-01-of-02', 'gs://output', 'my_file.config',
-             'my-project', 'gs://logs', None, None, '', fake_creds, []),
+             'my-project', 'gs://logs', None, None, '', False, fake_creds, []),
         call('gs://input/file-02-of-02', 'gs://output', 'my_file.config',
-             'my-project', 'gs://logs', None, None, '', fake_creds, [])
+             'my-project', 'gs://logs', None, None, '', False, fake_creds, [])
     ])
 
   @patch('apiclient.discovery.build')
@@ -124,9 +124,10 @@ class RunDeidTest(unittest.TestCase):
         **{'pipelines.return_value': Mock(run=run_fn)})
 
     # Run the pipeline.
-    run_deid_lib.run_deid('infile', 'outdir', 'test.config', 'my-project-id',
-                          'logdir', dict_directory=None, lists_directory=None,
-                          service_account=None, credentials=None, exceptions=[])
+    run_deid_lib.run_deid(
+        'infile', 'outdir', 'test.config', 'my-project-id', 'logdir',
+        dict_directory=None, lists_directory=None, service_account=None,
+        include_original_in_output=False, credentials=None, exceptions=[])
 
     # Check that run() was called with the expected request.
     expected_request_body = {

@@ -28,6 +28,7 @@ py_binary(
     deps = [
         ":bigquery_to_gcs",
         ":gcs_to_bigquery",
+        ":physionet_to_mae_lib",
         ":run_deid",
     ],
 )
@@ -69,12 +70,6 @@ py_binary(
     deps = [":gcs_to_bigquery_lib"],
 )
 
-py_test(
-    name = "gcs_to_bigquery_lib_test",
-    srcs = ["gcs_to_bigquery_lib_test.py"],
-    deps = [":gcs_to_bigquery_lib"],
-)
-
 # Rules for running PhysioNet DeID on Docker on GCP.
 py_library(
     name = "run_deid_lib",
@@ -96,6 +91,33 @@ py_test(
     deps = [":run_deid"],
 )
 
+# Rules for converting physionet output to MAE format.
+py_library(
+    name = "physionet_to_mae_lib",
+    srcs = ["physionet_to_mae_lib.py"],
+    deps = [
+        ":files_to_physionet_records",
+        "//common:gcsutil",
+        "//common:mae",
+        requirement("apache_beam"),
+    ],
+)
+
+py_test(
+    name = "physionet_to_mae_lib_test",
+    srcs = ["physionet_to_mae_lib_test.py"],
+    deps = [
+        ":physionet_to_mae_lib",
+        "//common:testutil",
+    ],
+)
+
+py_binary(
+    name = "physionet_to_mae",
+    srcs = ["physionet_to_mae.py"],
+    deps = [":physionet_to_mae_lib"],
+)
+
 # Helper library.
 py_library(
     name = "files_to_physionet_records",
@@ -103,4 +125,10 @@ py_library(
     deps = [
         requirement("apache_beam"),
     ],
+)
+
+py_test(
+    name = "files_to_physionet_records_test",
+    srcs = ["files_to_physionet_records_test.py"],
+    deps = [":files_to_physionet_records"],
 )

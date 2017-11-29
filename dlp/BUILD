@@ -23,23 +23,10 @@ package(
 licenses(["notice"])  # Apache License 2.0
 
 py_library(
-    name = "mae",
-    srcs = ["mae.py"],
-)
-
-py_test(
-    name = "mae_test",
-    srcs = ["mae_test.py"],
-    deps = [
-        ":mae",
-    ],
-)
-
-py_library(
     name = "run_deid_lib",
     srcs = ["run_deid_lib.py"],
     deps = [
-        ":mae",
+        "//common:mae",
         requirement("apache_beam"),
     ],
 )

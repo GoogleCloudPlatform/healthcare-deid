@@ -39,6 +39,7 @@ py_test(
     deps = [
         ":results_py_pb2",
         ":run_pipeline_lib",
+        "//common:beam_testutil",
         "//common:testutil",
         requirement("apache_beam"),
     ],

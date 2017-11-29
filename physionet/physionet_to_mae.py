@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Stand-alone executable version of run_deid."""
+"""Stand-alone executable version of physionet_to_mae_lib."""
 
 from __future__ import absolute_import
 
@@ -20,8 +20,7 @@ import argparse
 import logging
 import sys
 
-from google.cloud import storage
-from physionet import run_deid_lib
+from physionet import physionet_to_mae_lib
 import google.auth
 
 
@@ -29,24 +28,18 @@ def main():
   logging.getLogger().setLevel(logging.INFO)
 
   parser = argparse.ArgumentParser(
-      description=('Run Physionet DeID on Google Cloud Platform.'))
-  run_deid_lib.add_all_args(parser)
-  args = parser.parse_args(sys.argv[1:])
+      description=('Convert files from PhysioNet to MAE.'))
+  physionet_to_mae_lib.add_all_args(parser)
+  args, pipeline_args = parser.parse_known_args(sys.argv[1:])
+  # --project is used both as a local arg and a pipeline arg, so parse it, then
+  # add it to pipeline_args as well.
+  pipeline_args += ['--project', args.project]
 
   credentials, _ = google.auth.default()
-  storage_client = storage.Client(args.project, credentials=credentials)
 
-  errors = run_deid_lib.run_pipeline(
-      args.input_pattern, args.output_directory, args.config_file,
-      args.project, args.log_directory, args.dict_directory,
-      args.lists_directory, args.max_num_threads, args.service_account,
-      args.include_original_in_pn_output, storage_client, credentials)
-
-  if errors:
-    logging.error(errors)
-    return 1
-
-  logging.info('Ran PhysioNet DeID and put output in %s', args.output_directory)
+  physionet_to_mae_lib.run_pipeline(
+      args.input_pattern, args.mae_output_dir, args.mae_task_name, credentials,
+      args.project, pipeline_args)
 
 if __name__ == '__main__':
   main()

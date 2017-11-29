@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Beam pipeline that pushes PhysioNet records to BigQuery.
+"""Beam pipeline that converts PhysioNet records to MAE format.
 
 Requires Apache Beam client:
 pip install --upgrade apache_beam
@@ -21,32 +21,53 @@ pip install --upgrade apache_beam
 from __future__ import absolute_import
 
 import logging
+import os
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 
+from google.cloud import storage
+from common import gcsutil
+from common import mae
 from physionet import files_to_physionet_records as f2pn
 
 
-def run_pipeline(input_pattern, output_table, pipeline_args):
-  """Read the records from GCS and write them to BigQuery."""
+def write_mae(mae_result, project, credentials, mae_dir):
+  """Write the MAE results to GCS."""
+  storage_client = storage.Client(project, credentials)
+  filename = '{0}-{1}.xml'.format(
+      mae_result.patient_id, mae_result.record_number)
+  gcs_name = gcsutil.GcsFileName.from_path(mae_dir)
+  bucket = storage_client.get_bucket(gcs_name.bucket)
+  blob = bucket.blob(os.path.join(gcs_name.blob, filename))
+  blob.upload_from_string(mae_result.mae_xml)
+
+
+def run_pipeline(input_pattern, output_dir, mae_task_name, credentials, project,
+                 pipeline_args):
+  """Read the physionet records from GCS and write them out as MAE."""
   p = beam.Pipeline(options=PipelineOptions(pipeline_args))
   _ = (p |
        'match_files' >> beam.Create(f2pn.match_files(input_pattern)) |
-       'to_records' >> beam.FlatMap(f2pn.map_file_to_records) |
-       'parse_physionet_record' >> beam.Map(f2pn.parse_physionet_record) |
-       'write' >> beam.io.Write(beam.io.BigQuerySink(
-           output_table,
-           schema='patient_id:INTEGER, record_number:INTEGER, note:STRING',
-           write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE)))
+       'to_records' >> beam.FlatMap(f2pn.map_phi_to_findings) |
+       'generate_mae' >> beam.Map(mae.generate_mae, mae_task_name, {}) |
+       'write_mae' >> beam.Map(
+           write_mae, project, credentials, output_dir)
+      )
   result = p.run().wait_until_finish()
   logging.info('GCS to BigQuery result: %s', result)
 
 
-def add_args(parser):
+def add_args(parser, include_project=True):
   """Add command-line arguments to the program."""
-  parser.add_argument('--output_table', type=str, required=True,
-                      help='BigQuery table to store output data.')
+  parser.add_argument('--mae_output_dir', type=str, required=True,
+                      help='GCS directory to store output data.')
+  parser.add_argument('--mae_task_name', type=str, required=False,
+                      help='Task name to use in generated MAE files.',
+                      default='InspectPhiTask')
+  if include_project:
+    parser.add_argument('--project', type=str, required=True,
+                        help='GCP project to run as.')
 
 
 # Add arguments that won't be explicitly specified when this module is used as

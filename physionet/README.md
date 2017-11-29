@@ -91,3 +91,17 @@ bazel run physionet:gcs_to_bigquery -- \
   --output_table ${PROJECT?}:${DATASET?}.deid_output \
   --input_pattern gs://${BUCKET?}/deid/input/*
 ```
+
+### GCS PhysioNet to MAE
+
+You can use physionet_to_mae to convert the PhysioNet DeID results to MAE
+format. run_deid needs to be run with --include_original_in_output to generate
+output that will work as input for physionet_to_mae.
+
+Example usage:
+
+```shell
+bazel run physionet:physionet_to_mae -- \
+  --mae_output_dir gs://${BUCKET}/deid/mae/ \
+  --input_pattern gs://${BUCKET}/deid/input/file-?????-of-?????
+```

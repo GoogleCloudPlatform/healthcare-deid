@@ -34,7 +34,7 @@ import uuid
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apiclient import discovery
-from dlp import mae
+from common import mae
 
 
 def get_deid_text(deid_response):
@@ -378,7 +378,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
               mae_tag_categories, task_name)
     _ = (inspect_data
          | 'generate_mae' >> beam.Map(
-             partial(mae.generate_mae, task_name, mae_tag_categories))
+             mae.generate_mae, task_name, mae_tag_categories)
          | 'write_mae' >> beam.Map(
              write_mae, storage_client_fn, project, credentials, mae_dir))
   if deid_table:

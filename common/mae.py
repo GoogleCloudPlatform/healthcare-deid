@@ -51,7 +51,7 @@ def _get_infotype_to_tag_map(mae_tag_categories):
   return infotype_to_tag_map
 
 
-def generate_mae(task_name, mae_tag_categories, inspect_result):
+def generate_mae(inspect_result, task_name, mae_tag_categories):
   """Write out inspect() findings in MAE format alongside the text in GCS."""
   infotype_to_tag_map = _get_infotype_to_tag_map(mae_tag_categories)
   mae_xml = ["""<?xml version="1.0" encoding="UTF-8" ?>

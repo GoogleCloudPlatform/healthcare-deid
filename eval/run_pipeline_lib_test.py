@@ -19,6 +19,8 @@ from __future__ import absolute_import
 import math
 import unittest
 
+import apache_beam as beam
+from common import beam_testutil
 from common import testutil
 from eval import results_pb2
 from eval import run_pipeline_lib
@@ -79,9 +81,9 @@ class RunPipelineLibTest(unittest.TestCase):
     fn2_tag = tag_template.format('TypeA', 15, 19)
     findings_tags = '\n'.join([tp_tag, fp_tag])
     golden_tags = '\n'.join([tp_tag, fn_tag, fn2_tag])
-    testutil.set_gcs_file('bucketname/input/file.xml',
+    testutil.set_gcs_file('bucketname/input/1-1.xml',
                           xml_template.format(findings_tags))
-    testutil.set_gcs_file('bucketname/goldens/file.xml',
+    testutil.set_gcs_file('bucketname/goldens/1-1.xml',
                           xml_template.format(golden_tags))
 
     tp2_tag = tag_template.format('TypeB', 20, 21)
@@ -98,12 +100,15 @@ class RunPipelineLibTest(unittest.TestCase):
     findings_tags = '\n'.join([tp_tag, tp2_tag, entity_fp_tag, partial_tag1,
                                partial_tag2, partial_tag3])
     golden_tags = '\n'.join([tp_tag, tp2_tag, entity_fn_tag, multi_token_tag])
-    testutil.set_gcs_file('bucketname/input/file2.xml',
+    testutil.set_gcs_file('bucketname/input/1-2.xml',
                           xml_template.format(findings_tags))
-    testutil.set_gcs_file('bucketname/goldens/file2.xml',
+    testutil.set_gcs_file('bucketname/goldens/1-2.xml',
                           xml_template.format(golden_tags))
-    run_pipeline_lib.run_pipeline(input_pattern, golden_dir, results_dir,
+    self.old_write_to_text = beam.io.WriteToText
+    beam.io.WriteToText = beam_testutil.DummyWriteTransform
+    run_pipeline_lib.run_pipeline(input_pattern, golden_dir, results_dir, True,
                                   'credentials', 'project', pipeline_args=None)
+    beam.io.WriteToText = self.old_write_to_text
 
     expected_text = """strict_entity_matching_results {
   micro_average_results {
@@ -143,6 +148,43 @@ binary_token_matching_results {
         results)
     self.assertEqual(normalize_floats(expected_results),
                      normalize_floats(results))
+
+    # Check the per-file results were written correctly.
+    expected_result1 = results_pb2.IndividualResult()
+    text_format.Merge("""
+record_id: "1-1"
+stats {
+  true_positives: 1
+  false_positives: 1
+  false_negatives: 2
+  precision: 0.5
+  recall: 0.333333333333
+  f_score: 0.4
+}""",
+                      expected_result1)
+    expected_result2 = results_pb2.IndividualResult()
+    text_format.Merge("""
+record_id: "1-2"
+stats {
+  true_positives: 6
+  precision: 1.0
+  recall: 1.0
+  f_score: 1.0
+}""",
+                      expected_result2)
+    normalize_floats(expected_result1)
+    normalize_floats(expected_result2)
+    full_text = testutil.get_gcs_file('bucketname/results/per-note-results')
+    actual_results = []
+    for record in sorted(full_text.split('\n\n')):
+      if not record:
+        continue
+      actual_result = results_pb2.IndividualResult()
+      text_format.Merge(record, actual_result)
+      actual_results.append(normalize_floats(actual_result))
+
+    self.assertEqual([expected_result1, expected_result2],
+                     actual_results)
 
   def testHMean(self):
     self.assertAlmostEqual(2.0, run_pipeline_lib.hmean(1, 2, 4, 4))

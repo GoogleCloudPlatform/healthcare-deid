@@ -21,8 +21,30 @@ import os
 _fake_gcs = {}
 
 
+class _FakeReader(object):
+
+  def __init__(self, contents):
+    self.contents = contents.split('\n')
+
+  def __iter__(self):
+    return self.contents.__iter__()
+
+
+def fake_open(filename):
+  gs_prefix = 'gs://'
+  if filename.startswith(gs_prefix):
+    filename = filename[len(gs_prefix):]
+  return _FakeReader(_fake_gcs[filename])
+
+
 def set_gcs_file(filename, contents):
   _fake_gcs[filename] = contents
+
+
+def append_to_gcs_file(filename, contents):
+  if filename not in _fake_gcs:
+    return set_gcs_file(filename, contents)
+  _fake_gcs[filename] += contents
 
 
 def get_gcs_file(filename):
