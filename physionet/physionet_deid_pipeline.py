@@ -21,12 +21,12 @@ import logging
 import os
 import sys
 
-from google.cloud import storage
 from physionet import bigquery_to_gcs_lib
 from physionet import gcs_to_bigquery_lib
 from physionet import physionet_to_mae_lib
 from physionet import run_deid_lib
 import google.auth
+from google.cloud import storage
 
 
 def add_args(parser):

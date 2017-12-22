@@ -34,7 +34,10 @@ py_library(
 py_binary(
     name = "run_deid",
     srcs = ["run_deid.py"],
-    deps = [":run_deid_lib"],
+    deps = [
+        ":run_deid_lib",
+        requirement("google-cloud-storage"),
+    ],
 )
 
 py_test(
@@ -44,6 +47,8 @@ py_test(
         "//dlp/mae_testdata:sample.dtd",
         "//dlp/mae_testdata:sample.xml",
         "//dlp/testdata:config.json",
+        "//dlp/testdata:multi_column_config.json",
+        "//dlp/testdata:multi_column_request.json",
         "//dlp/testdata:request.json",
     ],
     deps = [

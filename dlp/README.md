@@ -57,14 +57,12 @@ and note. You may also provide a query that generates matching row
 (--input_query), but note that this causes the data to be stored in a temporary
 table which does not have data locality guarantees.
 
-The output is written to 3 separate tables:
+The output is written to 2 separate tables:
 
 * deid_table holds the deidentified notes from the deidentify call to the DLP
   API.
 * findings_table holds the findings of PII identified from calling inspect on
   the DLP API.
-* annotated_notes_table holds a version of the original notes where the
-  identified PII has been annotated with an XML tag.
 
 Example usage:
 
@@ -76,14 +74,13 @@ bazel-bin/dlp/run_deid \
   --deid_config_file dlp/sample_deid_config.json \
   --deid_table ${PROJECT?}:${DATASET?}.deid_output \
   --findings_table ${PROJECT?}:${DATASET?}.dlp_findings \
-  --annotated_notes_table ${PROJECT?}:${DATASET?}.dlp_annotated
   --mae_dir gs://bucket-name/mae-output-directory
 ```
 
 ## Config file
 
 --deid_config_file specifies a json file (example in [sample_deid_config.json](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/sample_deid_config.json))
-that contains an object with four fields:
+that contains an object with five fields:
 
 `deidConfig`: A [DeidentifyConfig](https://cloud.google.com/dlp/docs/reference/rest/v2beta1/content/deidentify#DeidentifyConfig)
 for use with the DLP API's content.deidentify method.
@@ -108,6 +105,12 @@ it runs through the entire dataset and gets *all* the values for the given
 column(s). These are then passed to every inspect() and deid() request as
 custom infoTypes.
 
+`columns`: Specifies two types of columns - those that should be passed through
+to the output table as-is (`passThrough`) and those that should be processed by
+the DLP API and have the results written to the output table (`inspect`). If
+not specified in the config, `passThrough` contains 'patient_id' and
+'record_number', and `inspect` contains 'note'. See
+sample_multi_column_deid_config.json for an example.
 
 ## MAE Format
 
@@ -116,6 +119,9 @@ directory. The files will be named using the structure
 "`patientid`-`recordnumber`.xml", with a DTD file in "classification.dtd".
 Examples are available under [mae_testdata](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/mae_testdata)
 in `sample.xml` and `sample.dtd`.
+
+Note that MAE output cannot be used if you specify `columns` in your config
+file.
 
 ### DTD Format
 

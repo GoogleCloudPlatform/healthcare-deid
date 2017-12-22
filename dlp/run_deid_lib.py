@@ -25,7 +25,7 @@ from __future__ import absolute_import
 
 import collections
 import copy
-from functools import partial
+import itertools
 import json
 import logging
 import os
@@ -37,12 +37,45 @@ from apiclient import discovery
 from common import mae
 
 
-def get_deid_text(deid_response):
-  return {
-      'patient_id': deid_response['patient_id'],
-      'record_number': deid_response['record_number'],
-      'note': deid_response['raw_response']['items'][0]['value']
-  }
+def _get_index(column_name, headers):
+  """Return the position in the headers list where column_name appears."""
+  i = 0
+  for header in headers:
+    if header['columnName'] == column_name:
+      return i
+    i += 1
+  return -1
+
+
+def get_deid_text(deid_response, pass_through_columns, target_columns):
+  """Get the de-id'd text from the deid() API call response."""
+  # Sample response for a request with a table as input:
+  # {'items': [
+  #    {'table': {
+  #      'headers': [{'columnName': 'note'}, {'columnName': 'first_name'}],
+  #      'rows': [
+  #        {'values': [{'stringValue': 'text'}, {'stringValue': 'Pat'}]}
+  #      ]
+  #    }}
+  #  ...
+  # ] }
+  response = {}
+  for col in pass_through_columns:
+    response[col['name']] = deid_response[col['name']]
+
+  if len(target_columns) == 1:
+    response[target_columns[0]['name']] = (
+        deid_response['raw_response']['items'][0]['value'])
+  else:
+    table = deid_response['raw_response']['items'][0]['table']
+    for col in target_columns:
+      i = _get_index(col['name'], table['headers'])
+      val = ''
+      if i >= 0 and table['rows']:
+        val = table['rows'][0]['values'][i][col['type']]
+      response[col['name']] = val
+
+  return response
 
 
 def _per_row_inspect_config(inspect_config, per_row_types, row):
@@ -64,123 +97,136 @@ def _per_row_inspect_config(inspect_config, per_row_types, row):
   return inspect_config
 
 
-def deid(credentials, deid_config, inspect_config, per_row_types, dlp_api, row):
-  """Put the data through the DLP API DeID."""
-  dlp = discovery.build(dlp_api, 'v2beta1', credentials=credentials)
-  content = dlp.content()
+# Creates the 'item' field for a deid or inspect request.
+# In the simple case, returns a single value, e.g.:
+#   'item': { 'type': 'text/plain', 'value': 'given text' }
+# If multiple columns are specified, creates a table with a single row, e.g.:
+#   'item': {'table': {
+#     'headers': [{'columnName': 'note'}, {'columnName': 'secondary note'}]
+#     'rows': [ {
+#       'values': [{'stringValue': 'text of the note'},
+#                  {'stringValue': 'text of the secondary note'}]
+#     }]
+#   }}
+def _create_item(target_columns, row):
+  if len(target_columns) == 1:
+    return {'type': 'text/plain', 'value': row[target_columns[0]['name']]}
+  else:
+    table = {'headers': [], 'rows': [{'values': []}]}
+    for col in target_columns:
+      table['headers'].append({'columnName': col['name']})
+      table['rows'][0]['values'].append({col['type']: row[col['name']]})
+    return {'table': table}
+
+
+def deid(row, credentials, project, deid_config, inspect_config,
+         pass_through_columns, target_columns, per_row_types, dlp_api_name):
+  """Put the data through the DLP API DeID method.
+
+  Args:
+    row: A BigQuery row with data to send to the DLP API.
+    credentials: oauth2client.Credentials for authentication with the DLP API.
+    project: The project to send the request for.
+    deid_config: DeidentifyConfig map, as defined in the DLP API:
+      https://goo.gl/e8DBmm#DeidentifyTemplate.DeidentifyConfig
+    inspect_config: inspectConfig map, as defined in the DLP API:
+      https://cloud.google.com/dlp/docs/reference/rest/v2beta2/InspectConfig
+    pass_through_columns: List of strings; columns that should not be sent to
+      the DLP API, but should still be included in the final output.
+    target_columns: List of strings; columns that should be sent to the DLP API,
+      and have the DLP API data included in the final output.
+    per_row_types: List of objects representing columns that should be read and
+      sent to the DLP API as custom infoTypes.
+    dlp_api_name: Name of the DLP API to use (generally 'dlp', but may vary for
+      testing purposes).
+  Raises:
+    Exception: If the request fails.
+  Returns:
+    A dict containing:
+     - 'raw_response': The result from the DLP API call.
+     - An entry for each pass-through column.
+  """
+  dlp = discovery.build(dlp_api_name, 'v2beta2', credentials=credentials)
+  projects = dlp.projects()
+  content = projects.content()
 
   inspect_config = _per_row_inspect_config(inspect_config, per_row_types, row)
   req_body = {
       'deidentifyConfig': deid_config,
       'inspectConfig': inspect_config,
-      'items': [
-          {
-              'type': 'text/plain',
-              'value': row['note']
-          }
-      ]
+      'item': _create_item(target_columns, row)
   }
-  response = content.deidentify(body=req_body).execute()
+  parent = 'projects/{0}'.format(project)
+  response = content.deidentify(body=req_body, parent=parent).execute()
   if 'error' in response:
+    patient_id = row['patient_id'] if 'patient_id' in row else '?'
+    record_number = row['record_number'] if 'record_number' in row else '?'
     raise Exception('Deidentify() failed for patient {} record {}: {}'.format(
-        row['patient_id'], row['record_number'], response['error']))
+        patient_id, record_number, response['error']))
 
-  return {
-      'patient_id': row['patient_id'],
-      'record_number': int(row['record_number']),
-      'raw_response': response
-  }
+  ret = {'raw_response': response}
+  for col in pass_through_columns:
+    ret[col['name']] = row[col['name']]
+  return ret
 
 
-def inspect(credentials, inspect_config, per_row_types, dlp_api, row):
-  """Put the data through the DLP API DeID inspect method."""
-  dlp = discovery.build(dlp_api, 'v2beta1', credentials=credentials)
-  content = dlp.content()
+def inspect(row, credentials, project, inspect_config, pass_through_columns,
+            target_columns, per_row_types, dlp_api_name):
+  """Put the data through the DLP API inspect method.
+
+  Args:
+    row: A BigQuery row with data to send to the DLP API.
+    credentials: oauth2client.Credentials for authentication with the DLP API.
+    project: The project to send the request for.
+    inspect_config: inspectConfig map, as defined in the DLP API:
+      https://cloud.google.com/dlp/docs/reference/rest/v2beta2/InspectConfig
+    pass_through_columns: List of strings; columns that should not be sent to
+      the DLP API, but should still be included in the final output.
+    target_columns: List of strings; columns that should be sent to the DLP API,
+      and have the DLP API data included in the final output.
+    per_row_types: List of objects representing columns that should be read and
+      sent to the DLP API as custom infoTypes.
+    dlp_api_name: Name of the DLP API to use (generally 'dlp', but may vary for
+      testing purposes).
+  Raises:
+    Exception: If the request fails.
+  Returns:
+    A dict containing:
+     - 'result': The result from the DLP API call.
+     - 'original_note': The original note, to be used in generating MAE output.
+     - An entry for each pass-through column.
+  """
+  dlp = discovery.build(dlp_api_name, 'v2beta2', credentials=credentials)
+  projects = dlp.projects()
+  content = projects.content()
 
   inspect_config = _per_row_inspect_config(inspect_config, per_row_types, row)
+
   req_body = {
       'inspectConfig': inspect_config,
-      'items': [
-          {
-              'type': 'text/plain',
-              'value': row['note']
-          }
-      ]
+      'item': _create_item(target_columns, row)
   }
-  response = content.inspect(body=req_body).execute()
+
+  parent = 'projects/{0}'.format(project)
+  response = content.inspect(body=req_body, parent=parent).execute()
   if 'error' in response:
     raise Exception('Inspect() failed for patient {} record {}: {}'.format(
         row['patient_id'], row['record_number'], response['error']))
 
-  return {
-      'patient_id': row['patient_id'],
-      'record_number': int(row['record_number']),
-      'original_note': row['note'],
-      'result': response['results'][0]
-  }
+  ret = {'result': response['result']}
+  # Pass the original note along for use in MAE output.
+  if len(target_columns) == 1:
+    ret['original_note'] = row[target_columns[0]['name']]
+  for col in pass_through_columns:
+    ret[col['name']] = row[col['name']]
+  return ret
 
 
-def format_findings(inspect_result):
-  return {
-      'patient_id': inspect_result['patient_id'],
-      'record_number': inspect_result['record_number'],
-      'findings': str(inspect_result['result'])
-  }
-
-
-def start(finding):
-  if 'start' not in finding['location']['byteRange']:
-    return 0
-  return int(finding['location']['byteRange']['start'])
-
-
-def end(finding):
-  return int(finding['location']['byteRange']['end'])
-
-
-def sort_findings(result):
-  """Sort the findings from inspect() and ensure none of them overlap."""
-  if 'findings' not in result:
-    return []
-  # Deepcopy the findings so we can modify them for the purposes of writing
-  # annotations without impacting other methods using this data.
-  sorted_findings = copy.deepcopy(sorted(result['findings'], key=start))
-  i = 1
-  while i < len(sorted_findings):
-    if (end(sorted_findings[i-1]) == end(sorted_findings[i]) and
-        start(sorted_findings[i-1]) == start(sorted_findings[i])):
-      # We have two findings on the same string. Combine the findings by adding
-      # the second one's infoType to the first's, and delete the second finding.
-      sorted_findings[i-1]['infoType']['name'] += (
-          ',' + sorted_findings[i]['infoType']['name'])
-      del sorted_findings[i]
-      continue
-
-    if end(sorted_findings[i-1]) > start(sorted_findings[i]):
-      raise Exception(
-          'Can\'t process overlapping findings:\n\n%s\n\nAND\n\n%s\n\n' %
-          (sorted_findings[i-1], sorted_findings[i]))
-    i += 1
-  return sorted_findings
-
-
-def add_annotations(inspect_result):
-  """Annotate the original note with the findings from inspect()."""
-  annotated = inspect_result['original_note']
-  for finding in reversed(sort_findings(inspect_result['result'])):
-    found_text = annotated[start(finding):end(finding)]
-    # Annotate with XML.
-    annotated = (
-        annotated[:start(finding)] +
-        '<finding info_types="{0}">{1}</finding>'.format(
-            finding['infoType']['name'], found_text) +
-        annotated[end(finding):])
-
-  return {
-      'patient_id': inspect_result['patient_id'],
-      'record_number': inspect_result['record_number'],
-      'note': annotated,
-  }
+def format_findings(inspect_result, pass_through_columns):
+  ret = {'findings': str(inspect_result['result'])}
+  for col in pass_through_columns:
+    ret[col['name']] = inspect_result[col['name']]
+  return ret
 
 
 def split_gcs_name(gcs_path):
@@ -211,6 +257,18 @@ def write_dtd(storage_client_fn, project, credentials, mae_dir,
   blob.upload_from_string(dtd_contents)
 
 
+def _is_custom_type(type_name, per_row_types, per_dataset_types):
+  for custom_type in per_row_types:
+    if custom_type['infoTypeName'] == type_name:
+      return True
+  for per_dataset_type in per_dataset_types:
+    if 'infoTypes' in per_dataset_type:
+      for custom_type in per_dataset_type['infoTypes']:
+        if custom_type['infoTypeName'] == type_name:
+          return True
+  return False
+
+
 def generate_configs(config_text, input_query=None, input_table=None,
                      bq_client=None, bq_config_fn=None):
   """Generate DLP API configs based on the input config file."""
@@ -223,23 +281,38 @@ def generate_configs(config_text, input_query=None, input_table=None,
   if 'perRowTypes' in cfg:
     per_row_types = cfg['perRowTypes']
 
+  inspect_config = {}
+  per_dataset_types = []
+  if 'perDatasetTypes' in cfg:
+    per_dataset_types = cfg['perDatasetTypes']
+    if bq_client:
+      inspect_config['customInfoTypes'] = _load_per_dataset_types(
+          per_dataset_types, input_query, input_table, bq_client, bq_config_fn)
+
   # Generate an inspectConfig based on all the infoTypes listed in the deid
   # config's transformations.
   info_types = set()
   if deid_config:
     for transform in deid_config['infoTypeTransformations']['transformations']:
-      info_types |= set([t['name'] for t in transform['infoTypes']])
-  inspect_config = {'infoTypes': [{'name': t} for t in info_types]}
+      for t in transform['infoTypes']:
+        # Don't include custom infoTypes in the inspect config or the DLP API
+        # will complain.
+        if _is_custom_type(t['name'], per_row_types, per_dataset_types):
+          continue
+        info_types.add(t['name'])
+  inspect_config['infoTypes'] = [{'name': t} for t in info_types]
 
-  per_dataset_types = []
-  if 'perDatasetTypes' in cfg and bq_client:
-    per_dataset_types = cfg['perDatasetTypes']
-    custom_info_types = _load_per_dataset_types(
-        per_dataset_types, input_query, input_table, bq_client, bq_config_fn)
-    inspect_config['customInfoTypes'] = custom_info_types
+  pass_through_columns = [{'name': 'patient_id', 'type': 'stringValue'},
+                          {'name': 'record_number', 'type': 'integerValue'}]
+  target_columns = [{'name': 'note', 'type': 'stringValue'}]
+  if 'columns' in cfg:
+    if 'passThrough' in cfg['columns']:
+      pass_through_columns = cfg['columns']['passThrough']
+    if 'inspect' in cfg['columns']:
+      target_columns = cfg['columns']['inspect']
 
   return (inspect_config, deid_config, mae_tag_categories, per_row_types,
-          per_dataset_types)
+          pass_through_columns, target_columns)
 
 
 def _load_per_dataset_types(per_dataset_cfg, input_query, input_table,
@@ -299,7 +372,7 @@ def _load_per_dataset_types(per_dataset_cfg, input_query, input_table,
       has_results = True
       if not old_api and not hasattr(row, 'get'):
         # Workaround for google-cloud-bigquery==0.28.0, which is the latest
-        # version as of 2017-11-20.
+        # version as of 2017-12-08.
         field_indexes = row._xxx_field_to_index  # pylint: disable=protected-access
       for info_type in type_config['infoTypes']:
         column_name = info_type['columnName']
@@ -323,10 +396,20 @@ def _load_per_dataset_types(per_dataset_cfg, input_query, input_table,
   return custom_info_types
 
 
+def _generate_schema(pass_through_columns, target_columns):
+  """Generate a BigQuery schema with the configured columns."""
+  m = {'stringValue': 'STRING', 'integerValue': 'INTEGER',
+       'floatValue': 'FLOAT', 'booleanValue': 'BOOLEAN'}
+  segments = []
+  for col in itertools.chain(pass_through_columns, target_columns):
+    segments.append('{0}:{1}'.format(col['name'], m[col['type']]))
+  return ', '.join(segments)
+
+
 def run_pipeline(input_query, input_table, deid_table, findings_table,
-                 annotated_notes_table, mae_dir, deid_config_file, task_name,
-                 credentials, project, storage_client_fn, bq_client,
-                 bq_config_fn, dlp_api_name, pipeline_args):
+                 mae_dir, deid_config_file, task_name, credentials, project,
+                 storage_client_fn, bq_client, bq_config_fn, dlp_api_name,
+                 pipeline_args):
   """Read the records from BigQuery, DeID them, and write them to BigQuery."""
   if (input_query is None) == (input_table is None):
     return 'Exactly one of input_query and input_table must be set.'
@@ -334,10 +417,14 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if deid_config_file:
     with open(deid_config_file) as f:
       config_text = f.read()
-
   (inspect_config, deid_config, mae_tag_categories, per_row_types,
-   per_dataset_types) = generate_configs(
+   pass_through_columns, target_columns) = generate_configs(
        config_text, input_query, input_table, bq_client, bq_config_fn)
+
+  if len(target_columns) > 1 and mae_dir:
+    raise Exception(
+        'Cannot use --mae_dir when multiple columns are specified for '
+        '"inspect" in the config file.')
 
   p = beam.Pipeline(options=PipelineOptions(pipeline_args))
   reads = None
@@ -349,27 +436,19 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
              'read' >> beam.io.Read(bq))
 
   inspect_data = None
-  if findings_table or annotated_notes_table or mae_dir:
+  if findings_table or mae_dir:
     inspect_data = (
-        reads |
-        'inspect' >> beam.Map(
-            partial(inspect, credentials, inspect_config, per_row_types,
-                    dlp_api_name)))
+        reads | 'inspect' >> beam.Map(
+            inspect, credentials, project, inspect_config, pass_through_columns,
+            target_columns, per_row_types, dlp_api_name))
   if findings_table:
-    # Call inspect and write the result to BigQuery.
+    # Write the inspect result to BigQuery. We don't process the result, even
+    # if it's for multiple columns.
+    schema = _generate_schema(pass_through_columns, []) + ',findings:STRING'
     _ = (inspect_data
-         | 'format_findings' >> beam.Map(format_findings)
+         | 'format_findings' >> beam.Map(format_findings, pass_through_columns)
          | 'write_findings' >> beam.io.Write(beam.io.BigQuerySink(
-             findings_table,
-             schema='patient_id:STRING,record_number:INTEGER,findings:STRING',
-             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
-  if annotated_notes_table:
-    # Annotate the PII found by inspect and write the result to BigQuery.
-    _ = (inspect_data
-         | 'add_annotations' >> beam.Map(add_annotations)
-         | 'write_annotated' >> beam.io.Write(beam.io.BigQuerySink(
-             annotated_notes_table,
-             schema='patient_id:STRING, record_number:INTEGER, note:STRING',
+             findings_table, schema=schema,
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
   if mae_dir:
     if not mae_dir.startswith('gs://'):
@@ -382,32 +461,19 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
          | 'write_mae' >> beam.Map(
              write_mae, storage_client_fn, project, credentials, mae_dir))
   if deid_table:
-    if per_row_types or per_dataset_types:
-      all_custom_info_types = per_row_types[:]
-      for per_dataset_type in per_dataset_types:
-        all_custom_info_types += per_dataset_type['infoTypes']
-      # Add a basic transform for the custom infoTypes. Note that this must be
-      # done after creating the inspectConfig above, since the custom infoTypes
-      # can't be listed in the inspectConfig.
-      transform = {
-          'infoTypes': [
-              {'name': t['infoTypeName']} for t in all_custom_info_types],
-          'primitiveTransformation': {'replaceWithInfoTypeConfig': {}}
-      }
-      deid_config['infoTypeTransformations']['transformations'].append(
-          transform)
     if not deid_config_file:
       return ['Must set --deid_config_file when --deid_table is set.']
     # Call deidentify and write the result to BigQuery.
+    schema = _generate_schema(pass_through_columns, target_columns)
     _ = (reads
          | 'deid' >> beam.Map(
-             partial(deid,
-                     credentials, deid_config, inspect_config, per_row_types,
-                     dlp_api_name))
-         | 'get_deid_text' >> beam.Map(get_deid_text)
+             deid,
+             credentials, project, deid_config, inspect_config,
+             pass_through_columns, target_columns, per_row_types, dlp_api_name)
+         | 'get_deid_text' >> beam.Map(get_deid_text,
+                                       pass_through_columns, target_columns)
          | 'write_deid_text' >> beam.io.Write(beam.io.BigQuerySink(
-             deid_table,
-             schema='patient_id:STRING, record_number:INTEGER, note:STRING',
+             deid_table, schema=schema,
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
   result = p.run().wait_until_finish()
 
@@ -420,18 +486,17 @@ def add_all_args(parser):
   parser.add_argument(
       '--input_query', type=str, required=False,
       help=('BigQuery query to provide input data. Must yield rows with 3 '
-            'fields: (patient_id, record_number, note).'))
+            'fields: (patient_id, record_number, note), unless columns are '
+            'configured differently in the config file.'))
   parser.add_argument(
       '--input_table', type=str, required=False,
       help=('BigQuery table to provide input data. Must have rows with 3 '
-            'fields: (patient_id, record_number, note).'))
+            'fields: (patient_id, record_number, note), unless columns are '
+            'configured differently in the config file.'))
   parser.add_argument('--deid_table', type=str, required=False,
                       help='BigQuery table to store DeID\'d data.')
   parser.add_argument('--findings_table', type=str, required=False,
                       help='BigQuery table to store DeID summary data.')
-  parser.add_argument('--annotated_notes_table', type=str, required=False,
-                      help=('BigQuery table to store text with annotations of '
-                            'findings from DLP API\'s inspect().'))
   parser.add_argument('--mae_dir', type=str, required=False,
                       help=('GCS directory to store inspect() results in MAE '
                             'format.'))

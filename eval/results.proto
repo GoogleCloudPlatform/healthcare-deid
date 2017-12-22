@@ -37,6 +37,15 @@ message AggregateMatchingResults {
   // (e.g. precision is the mean of all the individual precision scores).
   // true_positive, false_positive, and false_negative are not used here.
   Stats macro_average_results = 2;
+  // Stats broken out per-infoType.
+  repeated PerTypeStats per_type_micro_average_results = 3;
+}
+
+message PerTypeStats {
+  // The info type category.
+  string info_type_category = 1;
+  // Results for findings of this type.
+  Stats stats = 2;
 }
 
 message Stats {

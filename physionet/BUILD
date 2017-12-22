@@ -30,6 +30,7 @@ py_binary(
         ":gcs_to_bigquery",
         ":physionet_to_mae_lib",
         ":run_deid",
+        requirement("google-cloud-storage"),
     ],
 )
 
@@ -82,7 +83,10 @@ py_library(
 py_binary(
     name = "run_deid",
     srcs = ["run_deid.py"],
-    deps = [":run_deid_lib"],
+    deps = [
+        ":run_deid_lib",
+        requirement("google-cloud-storage"),
+    ],
 )
 
 py_test(
@@ -100,6 +104,7 @@ py_library(
         "//common:gcsutil",
         "//common:mae",
         requirement("apache_beam"),
+        requirement("google-cloud-storage"),
     ],
 )
 
@@ -115,7 +120,9 @@ py_test(
 py_binary(
     name = "physionet_to_mae",
     srcs = ["physionet_to_mae.py"],
-    deps = [":physionet_to_mae_lib"],
+    deps = [
+        ":physionet_to_mae_lib",
+    ],
 )
 
 # Helper library.

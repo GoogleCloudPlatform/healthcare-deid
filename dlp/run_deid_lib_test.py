@@ -122,13 +122,14 @@ class RunDeidLibTest(unittest.TestCase):
          'infoType': {'name': 'US_CENSUS_NAME'}},
         {'location': {'byteRange': {'start': '9', 'end': '12'}},
          'infoType': {'name': 'US_MALE_NAME'}}]}
-    inspect_response = {'results': [findings]}
+    inspect_response = {'result': findings}
     fake_content = Mock()
     fake_content.inspect.return_value = Mock(
         execute=Mock(return_value=inspect_response))
     fake_content.deidentify.return_value = Mock(
         execute=Mock(return_value=deid_response))
-    fake_dlp = Mock(content=Mock(return_value=fake_content))
+    fake_projects = Mock(content=Mock(return_value=fake_content))
+    fake_dlp = Mock(projects=Mock(return_value=fake_projects))
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
@@ -146,7 +147,7 @@ class RunDeidLibTest(unittest.TestCase):
     deid_cfg = os.path.join(TESTDATA_DIR, 'testdata/config.json')
     storage_client_fn = lambda x, y: testutil.FakeStorageClient()
     run_deid_lib.run_pipeline(
-        'input_query', None, 'deid_tbl', 'findings_tbl', 'annotations_tbl',
+        'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', deid_cfg, 'InspectPhiTask',
         'fake-credentials', 'project', storage_client_fn, bq_client, None,
         'dlp', pipeline_args=None)
@@ -172,16 +173,83 @@ class RunDeidLibTest(unittest.TestCase):
 
     self.assertEqual(
         fake_db['deid_tbl'],
-        {'patient_id': '111', 'record_number': 1, 'note': 'deid_resp_val'})
+        {'patient_id': '111', 'record_number': '1', 'note': 'deid_resp_val'})
     self.assertEqual(
         fake_db['findings_tbl'],
-        {'patient_id': '111', 'record_number': 1, 'findings': str(findings)})
+        {'patient_id': '111', 'record_number': '1', 'findings': str(findings)})
+
+  @patch('apiclient.discovery.build')
+  @patch('apache_beam.io.BigQuerySink')
+  @patch('apache_beam.io.BigQuerySource')
+  def testMultiColumnDeid(self, mock_bq_source_fn, mock_bq_sink_fn,
+                          mock_build_fn):
+    def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
+      return FakeSink(table_name)
+    mock_bq_sink_fn.side_effect = make_sink
+
+    mock_bq_source_fn.return_value = FakeSource()
+    mock_bq_source_fn.return_value._records = [
+        {'first_name': 'Boaty', 'last_name': 'McBoatface',
+         'note': 'text and PID and MORE PID',
+         'patient_id': '111', 'record_number': '1'}]
+
+    deid_response = {'items': [{'table': {
+        'rows': [{'values': [{'stringValue': 'deidtext'},
+                             {'stringValue': 'myname'}]}],
+        'headers': [{'columnName': 'note'}, {'columnName': 'last_name'}]
+    }}]}
+    findings = {'findings': [
+        {'location': {'byteRange': {'start': '17', 'end': '25'}},
+         'infoType': {'name': 'PHONE_NUMBER'}},
+        {'location': {'byteRange': {'start': '9', 'end': '12'}},
+         'infoType': {'name': 'US_CENSUS_NAME'}},
+        {'location': {'byteRange': {'start': '9', 'end': '12'}},
+         'infoType': {'name': 'US_MALE_NAME'}}]}
+    inspect_response = {'result': findings}
+    fake_content = Mock()
+    fake_content.inspect.return_value = Mock(
+        execute=Mock(return_value=inspect_response))
+    fake_content.deidentify.return_value = Mock(
+        execute=Mock(return_value=deid_response))
+    fake_projects = Mock(content=Mock(return_value=fake_content))
+    fake_dlp = Mock(projects=Mock(return_value=fake_projects))
+    mock_build_fn.return_value = fake_dlp
+
+    query_job = Mock()
+    # 'name' is a special keyword arg for Mock, so we have to set it like this,
+    # instead of passing it to the constructor.
+    schema = [Mock(), Mock()]
+    schema[0].name = 'first_name'
+    schema[1].name = 'last_name'
+    rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum']]
+    results_table = FakeBqResults(schema, rows)
+    query_job.destination.fetch_data.return_value = results_table
+    bq_client = Mock()
+    bq_client.run_async_query.return_value = query_job
+
+    deid_cfg_file = os.path.join(TESTDATA_DIR,
+                                 'testdata/multi_column_config.json')
+
+    storage_client_fn = lambda x, y: testutil.FakeStorageClient()
+    mae_dir = ''  # Not compatible with multi-column.
+    run_deid_lib.run_pipeline(
+        'input_query', None, 'deid_tbl', 'findings_tbl',
+        mae_dir, deid_cfg_file, 'InspectPhiTask', 'fake-credentials', 'project',
+        storage_client_fn, bq_client, None, 'dlp', pipeline_args=None)
+
+    request_body = {}
+    with open(os.path.join(
+        TESTDATA_DIR, 'testdata/multi_column_request.json')) as f:
+      request_body = json.load(f)
+    fake_content.deidentify.assert_called_once()
+    _, kwargs = fake_content.deidentify.call_args
+    self.maxDiff = 10000
+    self.assertEqual(ordered(request_body), ordered(kwargs['body']))
+
     self.assertEqual(
-        fake_db['annotations_tbl'],
-        {'patient_id': '111', 'record_number': 1,
-         'note': ('text and <finding info_types="US_CENSUS_NAME,US_MALE_NAME">'
-                  'PID</finding> and <finding info_types="PHONE_NUMBER">'
-                  'MORE PID</finding>')})
+        fake_db['deid_tbl'],
+        {'patient_id': '111', 'record_number': '1', 'note': 'deidtext',
+         'last_name': 'myname'})
 
 if __name__ == '__main__':
   unittest.main()

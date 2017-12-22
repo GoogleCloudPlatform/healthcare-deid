@@ -19,8 +19,5 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 exports_files([
-    "config.json",
-    "multi_column_config.json",
-    "multi_column_request.json",
-    "request.json",
+    "expected_results",
 ])

@@ -27,10 +27,10 @@ import argparse
 import logging
 import sys
 
-from google.cloud import storage
 from dlp import run_deid_lib
 import google.auth
 from google.cloud import bigquery
+from google.cloud import storage
 
 
 def main():
@@ -52,9 +52,9 @@ def main():
 
   errors = run_deid_lib.run_pipeline(
       args.input_query, args.input_table, args.deid_table, args.findings_table,
-      args.annotated_notes_table, args.mae_dir, args.deid_config_file,
-      args.mae_task_name, credentials, args.project, storage.Client, bq_client,
-      bq_config_fn, args.dlp_api_name, pipeline_args)
+      args.mae_dir, args.deid_config_file, args.mae_task_name, credentials,
+      args.project, storage.Client, bq_client, bq_config_fn, args.dlp_api_name,
+      pipeline_args)
 
   if errors:
     logging.error(errors)

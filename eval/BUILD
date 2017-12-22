@@ -30,12 +30,14 @@ py_library(
         ":results_py_pb2",
         "//common:gcsutil",
         requirement("apache_beam"),
+        requirement("google-cloud-storage"),
     ],
 )
 
 py_test(
     name = "run_pipeline_lib_test",
     srcs = ["run_pipeline_lib_test.py"],
+    data = ["//eval/testdata:expected_results"],
     deps = [
         ":results_py_pb2",
         ":run_pipeline_lib",
@@ -48,7 +50,10 @@ py_test(
 py_binary(
     name = "run_pipeline",
     srcs = ["run_pipeline.py"],
-    deps = [":run_pipeline_lib"],
+    deps = [
+        ":run_pipeline_lib",
+        requirement("google-cloud-storage"),
+    ],
 )
 
 proto_library(

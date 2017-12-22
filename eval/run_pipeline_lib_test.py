@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 
 import math
+import os
 import unittest
 
 import apache_beam as beam
@@ -29,10 +30,11 @@ from mock import patch
 from google.protobuf import descriptor
 from google.protobuf import text_format
 
+TESTDATA_DIR = 'eval/testdata/'
 
 xml_template = """<?xml version="1.0" encoding="UTF-8" ?>
 <InspectPhiTask>
-<TEXT><![CDATA[word1   w2 w3  wrd4 5 word6   word7 multi token entity]]></TEXT>
+<TEXT><![CDATA[word1   w2 w3  wrd4 5 word6   word7 multi token entity w8]]></TEXT>
 <TAGS>
 {0}
 </TAGS></InspectPhiTask>
@@ -50,7 +52,13 @@ def normalize_floats(pb):
 
     normalized_values = None
     if desc.type == descriptor.FieldDescriptor.TYPE_FLOAT:
-      normalized_values = [round(x, 6) for x in values]
+      normalized_values = []
+      for x in values:
+        if math.isnan(x):
+          # NaN != NaN, so use infinity to make equality comparisons work.
+          normalized_values.append(float('inf'))
+        else:
+          normalized_values.append(round(x, 6))
 
     if normalized_values is not None:
       if is_repeated:
@@ -59,7 +67,15 @@ def normalize_floats(pb):
       else:
         setattr(pb, desc.name, normalized_values[0])
 
-    if desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE:
+    if (desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE and
+        desc.message_type.has_options and
+        desc.message_type.GetOptions().map_entry):
+      # This is a map; only recurse if the values have a message type.
+      if (desc.message_type.fields_by_number[2].type ==
+          descriptor.FieldDescriptor.TYPE_MESSAGE):
+        for v in values.itervalues():
+          normalize_floats(v)
+    elif desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE:
       for v in values:
         normalize_floats(v)
   return pb
@@ -97,8 +113,9 @@ class RunPipelineLibTest(unittest.TestCase):
     partial_tag2 = tag_template.format('TypeA', 42, 47)
     partial_tag3 = tag_template.format('TypeA', 48, 54)
     multi_token_tag = tag_template.format('TypeA', 36, 54)
+    ignored_tag = tag_template.format('ignore', 55, 57)
     findings_tags = '\n'.join([tp_tag, tp2_tag, entity_fp_tag, partial_tag1,
-                               partial_tag2, partial_tag3])
+                               partial_tag2, partial_tag3, ignored_tag])
     golden_tags = '\n'.join([tp_tag, tp2_tag, entity_fn_tag, multi_token_tag])
     testutil.set_gcs_file('bucketname/input/1-2.xml',
                           xml_template.format(findings_tags))
@@ -106,40 +123,15 @@ class RunPipelineLibTest(unittest.TestCase):
                           xml_template.format(golden_tags))
     self.old_write_to_text = beam.io.WriteToText
     beam.io.WriteToText = beam_testutil.DummyWriteTransform
+    types_to_ignore = ['ignore']
     run_pipeline_lib.run_pipeline(input_pattern, golden_dir, results_dir, True,
-                                  'credentials', 'project', pipeline_args=None)
+                                  types_to_ignore, 'credentials', 'project',
+                                  pipeline_args=None)
     beam.io.WriteToText = self.old_write_to_text
 
-    expected_text = """strict_entity_matching_results {
-  micro_average_results {
-    true_positives: 3
-    false_positives: 5
-    false_negatives: 4
-    precision: 0.375
-    recall: 0.428571
-    f_score: 0.4
-  }
-  macro_average_results {
-    precision: 0.416667
-    recall: 0.416667
-    f_score: 0.416667
-  }
-}
-binary_token_matching_results {
-  micro_average_results {
-    true_positives: 7
-    false_positives: 1
-    false_negatives: 2
-    precision: 0.875
-    recall: 0.777778
-    f_score: 0.823529
-  }
-  macro_average_results {
-    precision: 0.75
-    recall: 0.666667
-    f_score: 0.705882
-  }
-}"""
+    expected_text = ''
+    with open(os.path.join(TESTDATA_DIR, 'expected_results')) as f:
+      expected_text = f.read()
     expected_results = results_pb2.Results()
     text_format.Merge(expected_text, expected_results)
     results = results_pb2.Results()
@@ -229,17 +221,51 @@ stats {
 
   def testTokenizeSet(self):
     finding = run_pipeline_lib.Finding
-    findings = set([finding('TYPE_A', 0, 2, 'hi'),
-                    finding('TYPE_A', 4, 14, 'two tokens'),
-                    finding('TYPE_A', 20, 38, 'three\tmore  tokens')])
+    findings = [finding('TYPE_A', 0, 2, 'hi'),
+                finding('TYPE_B', 4, 14, 'two tokens'),
+                finding('TYPE_C', 20, 38, 'three\tmore  tokens'),
+                # 'tokens' is a duplicate, so it's not added to the results.
+                finding('TYPE_D', 32, 46, 'tokens overlap')]
     tokenized = run_pipeline_lib.tokenize_set(findings)
-    expected_tokenized = set([finding(None, 0, 2, 'hi'),
-                              finding(None, 4, 7, 'two'),
-                              finding(None, 8, 14, 'tokens'),
-                              finding(None, 20, 25, 'three'),
-                              finding(None, 26, 30, 'more'),
-                              finding(None, 32, 38, 'tokens')])
+    expected_tokenized = set([finding('TYPE_A', 0, 2, 'hi'),
+                              finding('TYPE_B', 4, 7, 'two'),
+                              finding('TYPE_B', 8, 14, 'tokens'),
+                              finding('TYPE_C', 20, 25, 'three'),
+                              finding('TYPE_C', 26, 30, 'more'),
+                              finding('TYPE_C', 32, 38, 'tokens'),
+                              finding('TYPE_D', 39, 46, 'overlap')])
     self.assertEqual(expected_tokenized, tokenized)
+
+  def testLooseMatching(self):
+    finding = run_pipeline_lib.Finding
+    findings = set([finding('TYPE_A', 0, 3, 'one'),
+                    finding('TYPE_B', 5, 8, 'two'),
+                    finding('TYPE_C', 20, 25, 'three')])
+    golden_findings = set([finding('TYPE_A', 0, 3, 'hit'),
+                           finding('TYPE_B', 7, 10, 'hit'),
+                           finding('TYPE_C', 25, 29, 'miss')])
+    result = run_pipeline_lib.count_matches(findings, golden_findings,
+                                            record_id='', strict=False)
+
+    expected_stats = results_pb2.Stats()
+    expected_stats.true_positives = 2
+    expected_stats.false_positives = 1
+    expected_stats.false_negatives = 1
+    expected_stats.precision = .66666667
+    expected_stats.recall = .66666667
+    expected_stats.f_score = .66666667
+    self.assertEqual(normalize_floats(expected_stats),
+                     normalize_floats(result.stats))
+
+    a = results_pb2.Stats()
+    a.true_positives = 1
+    b = results_pb2.Stats()
+    b.true_positives = 1
+    c = results_pb2.Stats()
+    c.false_positives = 1
+    c.false_negatives = 1
+    expected_per_type = {'TYPE_A': a, 'TYPE_B': b, 'TYPE_C': c}
+    self.assertEqual(expected_per_type, result.per_type)
 
   def testInvalidSpans(self):
     with self.assertRaises(Exception):

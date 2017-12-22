@@ -25,6 +25,8 @@ class _FakeReader(object):
 
   def __init__(self, contents):
     self.contents = contents.split('\n')
+    for i in range(len(self.contents)-1):
+      self.contents[i] += '\n'
 
   def __iter__(self):
     return self.contents.__iter__()

@@ -31,7 +31,7 @@ def parse_physionet_record(text):
   optional_date = r'(\d\d/\d\d/\d\d\d\d' + sep + r')?'
   pattern = (r'(\n)*START_OF_RECORD=(?P<patient_id>\d+?)' + sep +
              r'(?P<record_number>\d+?)' + sep + optional_date +
-             r'(?P<text>.*)' + sep + r'END_OF_RECORD')
+             r'\n(?P<text>.*)\n' + sep + r'END_OF_RECORD')
   match = re.match(pattern, text, re.MULTILINE | re.DOTALL)
   if not match:
     logging.error('Failed to parse record: "%s"', text)
@@ -40,7 +40,7 @@ def parse_physionet_record(text):
   output = {
       'patient_id': int(match.group('patient_id')),
       'record_number': int(match.group('record_number')),
-      'note': match.group('text').strip()
+      'note': match.group('text')
   }
   return output
 

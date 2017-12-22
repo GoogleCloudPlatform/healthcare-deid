@@ -121,14 +121,14 @@ multiple lines
     self.assertEqual(
         correct_result,
         ftp.parse_physionet_record(
-            """START_OF_RECORD=111||||222||||||||END_OF_RECORD"""))
+            """START_OF_RECORD=111||||222||||\n\n||||END_OF_RECORD"""))
 
     # Record starts with some extra newlines.
     correct_result['note'] = ''
     self.assertEqual(
         correct_result,
         ftp.parse_physionet_record(
-            """\n\nSTART_OF_RECORD=111||||222||||||||END_OF_RECORD"""))
+            """\n\nSTART_OF_RECORD=111||||222||||\n\n||||END_OF_RECORD"""))
 
   def testMapToBqInputsInvalidRecords(self):
     """Tests for invalid arguments to map_to_bq_inputs."""

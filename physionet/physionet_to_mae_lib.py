@@ -26,10 +26,10 @@ import os
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 
-from google.cloud import storage
 from common import gcsutil
 from common import mae
 from physionet import files_to_physionet_records as f2pn
+from google.cloud import storage
 
 
 def write_mae(mae_result, project, credentials, mae_dir):

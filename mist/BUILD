@@ -34,7 +34,10 @@ py_library(
 py_binary(
     name = "run_mist",
     srcs = ["run_mist.py"],
-    deps = [":run_mist_lib"],
+    deps = [
+        ":run_mist_lib",
+        requirement("google-cloud-storage"),
+    ],
 )
 
 # BigQuery -> GCS rules.

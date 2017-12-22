@@ -20,9 +20,9 @@ import argparse
 import logging
 import sys
 
-from google.cloud import storage
 from mist import run_mist_lib
 import google.auth
+from google.cloud import storage
 
 
 def main():

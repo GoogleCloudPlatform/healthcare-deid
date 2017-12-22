@@ -20,9 +20,9 @@ import argparse
 import logging
 import sys
 
-from google.cloud import storage
 from physionet import run_deid_lib
 import google.auth
+from google.cloud import storage
 
 
 def main():
