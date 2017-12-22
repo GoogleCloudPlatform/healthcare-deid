@@ -463,8 +463,6 @@ def add_all_args(parser):
                       help='GCP project to run as.')
   parser.add_argument('--output_per_note_stats', type=bool, default=False,
                       help='Also write per-note binary token matching results.')
-  parser.add_argument('--project', type=str, required=True,
-                      help='GCP project to run as.')
   parser.add_argument('--types_to_ignore', type=lambda s: s.split(','),
                       help=('Comma-separated list of types that should be '
                             'excluded from the analysis.'))
