@@ -125,7 +125,7 @@ class RunPipelineLibTest(unittest.TestCase):
     beam.io.WriteToText = beam_testutil.DummyWriteTransform
     types_to_ignore = ['ignore']
     run_pipeline_lib.run_pipeline(input_pattern, golden_dir, results_dir, True,
-                                  types_to_ignore, 'credentials', 'project',
+                                  types_to_ignore, 'project',
                                   pipeline_args=None)
     beam.io.WriteToText = self.old_write_to_text
 

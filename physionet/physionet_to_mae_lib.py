@@ -32,9 +32,9 @@ from physionet import files_to_physionet_records as f2pn
 from google.cloud import storage
 
 
-def write_mae(mae_result, project, credentials, mae_dir):
+def write_mae(mae_result, project, mae_dir):
   """Write the MAE results to GCS."""
-  storage_client = storage.Client(project, credentials)
+  storage_client = storage.Client(project)
   filename = '{0}-{1}.xml'.format(
       mae_result.patient_id, mae_result.record_number)
   gcs_name = gcsutil.GcsFileName.from_path(mae_dir)
@@ -43,7 +43,7 @@ def write_mae(mae_result, project, credentials, mae_dir):
   blob.upload_from_string(mae_result.mae_xml)
 
 
-def run_pipeline(input_pattern, output_dir, mae_task_name, credentials, project,
+def run_pipeline(input_pattern, output_dir, mae_task_name, project,
                  pipeline_args):
   """Read the physionet records from GCS and write them out as MAE."""
   p = beam.Pipeline(options=PipelineOptions(pipeline_args))
@@ -51,8 +51,7 @@ def run_pipeline(input_pattern, output_dir, mae_task_name, credentials, project,
        'match_files' >> beam.Create(f2pn.match_files(input_pattern)) |
        'to_records' >> beam.FlatMap(f2pn.map_phi_to_findings) |
        'generate_mae' >> beam.Map(mae.generate_mae, mae_task_name, {}) |
-       'write_mae' >> beam.Map(
-           write_mae, project, credentials, output_dir)
+       'write_mae' >> beam.Map(write_mae, project, output_dir)
       )
   result = p.run().wait_until_finish()
   logging.info('GCS to BigQuery result: %s', result)

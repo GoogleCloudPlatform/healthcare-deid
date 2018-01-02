@@ -74,7 +74,12 @@ class Finding(object):
 def _get_findings(filename, storage_client, types_to_ignore):
   """Parse findings from the given MAE XML file."""
   bucket = storage_client.lookup_bucket(filename.bucket)
+  if not bucket:
+    raise Exception('Failed to get bucket "{}".'.format(filename.bucket))
   blob = bucket.get_blob(filename.blob)
+  if not blob:
+    raise Exception('Failed to get blob "{}" in bucket "{}".'.format(
+        filename.blob, filename.bucket))
   contents = blob.download_as_string()
   tree = XmlTree.fromstring(contents)
   text = tree.find('TEXT').text
@@ -204,7 +209,7 @@ def count_matches(findings, golden_findings, record_id, strict):
   return result
 
 
-def compare(filename, golden_dir, types_to_ignore, project, credentials):
+def compare(filename, golden_dir, types_to_ignore, project):
   """Load data from the file and the golden file and compare.
 
   Args:
@@ -214,12 +219,11 @@ def compare(filename, golden_dir, types_to_ignore, project, credentials):
     types_to_ignore: List of strings representing types that should be excluded
       from the analysis.
     project: project ID used to access the files.
-    credentials: credentials used to access the files.
   Returns:
     (IndividualResult, IndividualResult), where the first is for strict entity
     matching and the second is for binary token matching.
   """
-  storage_client = storage.Client(project, credentials)
+  storage_client = storage.Client(project)
   golden_file = gcsutil.GcsFileName.from_path(
       os.path.join(golden_dir, os.path.basename(filename.blob)))
 
@@ -228,6 +232,7 @@ def compare(filename, golden_dir, types_to_ignore, project, credentials):
   record_id = os.path.basename(filename.blob)
   if record_id.endswith('.xml'):
     record_id = record_id[:-4]
+  logging.info('Running comparison for record "%s"', record_id)
 
   strict_entity_results = count_matches(
       findings, golden_findings, record_id, strict=True)
@@ -393,9 +398,9 @@ class CombineResultsFn(beam.CombineFn):
     return overall_results.to_results_proto()
 
 
-def write_aggregate_results(results, results_dir, project, credentials):
+def write_aggregate_results(results, results_dir, project):
   """Write the aggregate results to results_dir."""
-  storage_client = storage.Client(project, credentials)
+  storage_client = storage.Client(project)
 
   logging.info('Aggregate results:\n%s', results)
 
@@ -416,11 +421,12 @@ def get_binary_token_result(entity_and_binary_result_pair):
 
 
 def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
-                 output_per_note_stats, types_to_ignore, credentials, project,
+                 output_per_note_stats, types_to_ignore, project,
                  pipeline_args):
   """Evaluate the input files against the goldens."""
+  logging.info('Starting evaluation.')
   filenames = []
-  storage_client = storage.Client(project, credentials)
+  storage_client = storage.Client(project)
   for f in gcsutil.find_files(mae_input_pattern, storage_client):
     if os.path.dirname(f.string()) != os.path.dirname(mae_input_pattern):
       # Ignore subdirectories.
@@ -432,10 +438,10 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
   per_note_results = (p |
                       beam.Create(filenames) |
                       beam.Map(compare, mae_golden_dir, types_to_ignore,
-                               project, credentials))
+                               project))
   _ = (per_note_results |
        beam.CombineGlobally(CombineResultsFn()) |
-       beam.Map(write_aggregate_results, results_dir, project, credentials))
+       beam.Map(write_aggregate_results, results_dir, project))
 
   if output_per_note_stats:
     _ = (per_note_results |

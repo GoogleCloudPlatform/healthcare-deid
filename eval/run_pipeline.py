@@ -28,7 +28,6 @@ import logging
 import sys
 
 from eval import run_pipeline_lib
-import google.auth
 
 
 def main():
@@ -42,12 +41,10 @@ def main():
   # add it to pipeline_args as well.
   pipeline_args += ['--project', args.project]
 
-  credentials, _ = google.auth.default()
-
   errors = run_pipeline_lib.run_pipeline(
       args.mae_input_pattern, args.mae_golden_dir, args.results_dir,
-      args.output_per_note_stats, args.types_to_ignore, credentials,
-      args.project, pipeline_args)
+      args.output_per_note_stats, args.types_to_ignore, args.project,
+      pipeline_args)
 
   if errors:
     logging.error(errors)

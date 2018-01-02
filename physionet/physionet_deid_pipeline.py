@@ -25,7 +25,6 @@ from physionet import bigquery_to_gcs_lib
 from physionet import gcs_to_bigquery_lib
 from physionet import physionet_to_mae_lib
 from physionet import run_deid_lib
-import google.auth
 from google.cloud import storage
 
 
@@ -70,7 +69,7 @@ def main():
   pipeline_args += ['--project', args.project]
 
   if run_mae and not args.include_original_in_pn_output:
-    raise Exception('--include_original_in_output must be true when '
+    raise Exception('--include_original_in_pn_output must be true when '
                     '--mae_output_dir is set.')
 
   input_file = os.path.join(args.gcs_working_directory, 'input', 'file')
@@ -80,15 +79,13 @@ def main():
 
   output_dir = os.path.join(args.gcs_working_directory, 'output')
 
-  credentials, _ = google.auth.default()
-  storage_client = storage.Client(args.project, credentials=credentials)
+  storage_client = storage.Client(args.project)
 
   run_deid_lib.run_pipeline(
       input_file + '-?????-of-?????', output_dir, args.config_file,
       args.project, os.path.join(args.gcs_working_directory, 'logs'),
       args.dict_directory, args.lists_directory, args.max_num_threads,
-      args.include_original_in_pn_output, storage_client=storage_client,
-      credentials=credentials)
+      args.include_original_in_pn_output, storage_client=storage_client)
 
   logging.info('Ran PhysioNet DeID and put output in %s', output_dir)
 
@@ -101,7 +98,7 @@ def main():
   if run_mae:
     physionet_to_mae_lib.run_pipeline(
         os.path.join(output_dir, 'file-?????-of-?????'), args.mae_output_dir,
-        args.mae_task_name, credentials, args.project, pipeline_args)
+        args.mae_task_name, args.project, pipeline_args)
     logging.info('Wrote output to %s.', args.mae_output_dir)
 
   logging.info('Run complete.')

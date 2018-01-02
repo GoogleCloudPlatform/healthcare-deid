@@ -51,7 +51,7 @@ PHI and MORE PHI as well
 
     physionet_to_mae_lib.run_pipeline(
         'gs://bucketname/file-?????-of-?????', 'gs://bucketname/output/',
-        'InspectPhiTask', 'credentials', 'project-id', pipeline_args=None)
+        'InspectPhiTask', 'project-id', pipeline_args=None)
 
     expected_file1 = """<?xml version="1.0" encoding="UTF-8" ?>
 <InspectPhiTask>

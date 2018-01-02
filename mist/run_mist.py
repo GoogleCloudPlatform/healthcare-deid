@@ -21,7 +21,6 @@ import logging
 import sys
 
 from mist import run_mist_lib
-import google.auth
 from google.cloud import storage
 
 
@@ -33,13 +32,12 @@ def main():
   run_mist_lib.add_all_args(parser)
   args = parser.parse_args(sys.argv[1:])
 
-  credentials, _ = google.auth.default()
-  storage_client = storage.Client(args.project, credentials=credentials)
+  storage_client = storage.Client(args.project)
 
   errors = run_mist_lib.run_pipeline(
       args.input_pattern, args.output_directory, args.model_filename,
       args.project, args.log_directory, args.max_num_threads,
-      args.service_account, storage_client, credentials)
+      args.service_account, storage_client)
 
   if errors:
     logging.error(errors)

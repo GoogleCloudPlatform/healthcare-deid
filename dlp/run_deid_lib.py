@@ -29,12 +29,15 @@ import itertools
 import json
 import logging
 import os
+import time
 import uuid
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apiclient import discovery
+from apiclient import errors
 from common import mae
+import httplib2
 
 
 def _get_index(column_name, headers):
@@ -45,6 +48,45 @@ def _get_index(column_name, headers):
       return i
     i += 1
   return -1
+
+
+def _request_with_retry(fn, num_retries=5):
+  """Makes a service request; and retries if needed."""
+  for attempt in xrange(num_retries):
+    try:
+      return fn()
+    except errors.HttpError as error:
+      if attempt == (num_retries - 1):
+        # Give up after num_retries
+        logging.error('last attempt failed. giving up.')
+        raise
+      elif (error.resp.status == 429 or
+            (error.resp.status == 403 and
+             error.resp.reason in ['userRateLimitExceeded', 'quotaExceeded'])):
+        # 429 - Too Many Requests
+        # 403 - Client Rate limit exceeded. Wait and retry.
+        # 403 can also mean app authentication issue, so explicitly check
+        # for rate limit error
+        # https://developers.google.com/drive/web/handle-errors
+        sleep_seconds = 5+2**attempt
+        logging.warn(
+            'attempt %d failed with 403 or 429 error. retrying in %d sec...',
+            attempt + 1, sleep_seconds)
+        time.sleep(sleep_seconds)
+      elif error.resp.status in [500, 503]:
+        sleep_seconds = 10+2**attempt
+        # 500, 503 - Service error. Wait and retry.
+        logging.warn('attempt %d failed with 5xx error. retrying in %d sec...',
+                     attempt + 1, sleep_seconds)
+        time.sleep(sleep_seconds)
+      else:
+        # Don't retry for client errors.
+        logging.error('attempt %d failed. giving up.', attempt + 1)
+        raise
+    except httplib2.HttpLib2Error:
+      # Don't retry for connection errors.
+      logging.error('attempt %d failed. giving up.', attempt + 1)
+      raise
 
 
 def get_deid_text(deid_response, pass_through_columns, target_columns):
@@ -157,7 +199,8 @@ def deid(row, credentials, project, deid_config, inspect_config,
       'item': _create_item(target_columns, row)
   }
   parent = 'projects/{0}'.format(project)
-  response = content.deidentify(body=req_body, parent=parent).execute()
+  response = _request_with_retry(
+      content.deidentify(body=req_body, parent=parent).execute)
   if 'error' in response:
     patient_id = row['patient_id'] if 'patient_id' in row else '?'
     record_number = row['record_number'] if 'record_number' in row else '?'
@@ -208,7 +251,8 @@ def inspect(row, credentials, project, inspect_config, pass_through_columns,
   }
 
   parent = 'projects/{0}'.format(project)
-  response = content.inspect(body=req_body, parent=parent).execute()
+  response = _request_with_retry(
+      content.inspect(body=req_body, parent=parent).execute)
   if 'error' in response:
     raise Exception('Inspect() failed for patient {} record {}: {}'.format(
         row['patient_id'], row['record_number'], response['error']))
@@ -235,9 +279,9 @@ def split_gcs_name(gcs_path):
   return bucket, blob
 
 
-def write_mae(mae_result, storage_client_fn, project, credentials, mae_dir):
+def write_mae(mae_result, storage_client_fn, project, mae_dir):
   """Write the MAE results to GCS."""
-  storage_client = storage_client_fn(project, credentials)
+  storage_client = storage_client_fn(project)
   filename = '{0}-{1}.xml'.format(
       mae_result.patient_id, mae_result.record_number)
   bucket_name, blob_dir = split_gcs_name(mae_dir)
@@ -246,10 +290,10 @@ def write_mae(mae_result, storage_client_fn, project, credentials, mae_dir):
   blob.upload_from_string(mae_result.mae_xml)
 
 
-def write_dtd(storage_client_fn, project, credentials, mae_dir,
-              mae_tag_categories, task_name):
+def write_dtd(storage_client_fn, project, mae_dir, mae_tag_categories,
+              task_name):
   """Write the DTD config file."""
-  storage_client = storage_client_fn(project, credentials)
+  storage_client = storage_client_fn(project)
   dtd_contents = mae.generate_dtd(mae_tag_categories, task_name)
   bucket_name, blob_dir = split_gcs_name(mae_dir)
   bucket = storage_client.get_bucket(bucket_name)
@@ -453,13 +497,13 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if mae_dir:
     if not mae_dir.startswith('gs://'):
       return ['--mae_dir must be a GCS path starting with "gs://".']
-    write_dtd(storage_client_fn, project, credentials, mae_dir,
-              mae_tag_categories, task_name)
+    write_dtd(storage_client_fn, project, mae_dir, mae_tag_categories,
+              task_name)
     _ = (inspect_data
          | 'generate_mae' >> beam.Map(
              mae.generate_mae, task_name, mae_tag_categories)
          | 'write_mae' >> beam.Map(
-             write_mae, storage_client_fn, project, credentials, mae_dir))
+             write_mae, storage_client_fn, project, mae_dir))
   if deid_table:
     if not deid_config_file:
       return ['Must set --deid_config_file when --deid_table is set.']

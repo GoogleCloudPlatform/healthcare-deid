@@ -145,7 +145,7 @@ class RunDeidLibTest(unittest.TestCase):
     bq_client.run_async_query.return_value = query_job
 
     deid_cfg = os.path.join(TESTDATA_DIR, 'testdata/config.json')
-    storage_client_fn = lambda x, y: testutil.FakeStorageClient()
+    storage_client_fn = lambda x: testutil.FakeStorageClient()
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', deid_cfg, 'InspectPhiTask',

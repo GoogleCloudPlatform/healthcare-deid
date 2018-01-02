@@ -77,6 +77,15 @@ bazel-bin/dlp/run_deid \
   --mae_dir gs://bucket-name/mae-output-directory
 ```
 
+To run in parallel, add:
+
+```shell
+--runner DataflowRunner \
+--temp_location gs://{$BUCKET?}/tmp
+--staging_location gs://{$BUCKET?}/staging
+--setup_file ./setup.py
+```
+
 ## Config file
 
 --deid_config_file specifies a json file (example in [sample_deid_config.json](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/sample_deid_config.json))
