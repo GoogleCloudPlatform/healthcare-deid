@@ -39,9 +39,9 @@ Storage client, and Python Apache Beam client installed. Note that as of
 `six` library, which requires a downgrade to 1.10.0 to fix.
 
 ```shell
-sudo pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-storage six==1.10.0
+virtualenv env
+pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-bigquery google-auth-httplib2 google-cloud-storage six==1.10.0
 ```
-
 
 The code for the pipeline itself is available for download from GitHub:
 
@@ -81,8 +81,8 @@ To run in parallel, add:
 
 ```shell
 --runner DataflowRunner \
---temp_location gs://{$BUCKET?}/tmp
---staging_location gs://{$BUCKET?}/staging
+--temp_location gs://{$BUCKET?}/tmp \
+--staging_location gs://{$BUCKET?}/staging \
 --setup_file ./setup.py
 ```
 
