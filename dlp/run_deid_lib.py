@@ -44,7 +44,7 @@ def _get_index(column_name, headers):
   """Return the position in the headers list where column_name appears."""
   i = 0
   for header in headers:
-    if header['columnName'] == column_name:
+    if header['name'] == column_name:
       return i
     i += 1
   return -1
@@ -94,7 +94,7 @@ def get_deid_text(deid_response, pass_through_columns, target_columns):
   # Sample response for a request with a table as input:
   # {'items': [
   #    {'table': {
-  #      'headers': [{'columnName': 'note'}, {'columnName': 'first_name'}],
+  #      'headers': [{'name': 'note'}, {'name': 'first_name'}],
   #      'rows': [
   #        {'values': [{'stringValue': 'text'}, {'stringValue': 'Pat'}]}
   #      ]
@@ -107,9 +107,9 @@ def get_deid_text(deid_response, pass_through_columns, target_columns):
 
   if len(target_columns) == 1:
     response[target_columns[0]['name']] = (
-        deid_response['raw_response']['items'][0]['value'])
+        deid_response['raw_response']['item']['value'])
   else:
-    table = deid_response['raw_response']['items'][0]['table']
+    table = deid_response['raw_response']['item']['table']
     for col in target_columns:
       i = _get_index(col['name'], table['headers'])
       val = ''
@@ -144,7 +144,7 @@ def _per_row_inspect_config(inspect_config, per_row_types, row):
 #   'item': { 'type': 'text/plain', 'value': 'given text' }
 # If multiple columns are specified, creates a table with a single row, e.g.:
 #   'item': {'table': {
-#     'headers': [{'columnName': 'note'}, {'columnName': 'secondary note'}]
+#     'headers': [{'name': 'note'}, {'name': 'secondary note'}]
 #     'rows': [ {
 #       'values': [{'stringValue': 'text of the note'},
 #                  {'stringValue': 'text of the secondary note'}]
@@ -156,7 +156,7 @@ def _create_item(target_columns, row):
   else:
     table = {'headers': [], 'rows': [{'values': []}]}
     for col in target_columns:
-      table['headers'].append({'columnName': col['name']})
+      table['headers'].append({'name': col['name']})
       table['rows'][0]['values'].append({col['type']: row[col['name']]})
     return {'table': table}
 
