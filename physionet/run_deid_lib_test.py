@@ -127,7 +127,7 @@ class RunDeidTest(unittest.TestCase):
     run_deid_lib.run_deid(
         'infile', 'outdir', 'test.config', 'my-project-id', 'logdir',
         dict_directory=None, lists_directory=None, service_account=None,
-        include_original_in_output=False, credentials=None, exceptions=[])
+        include_original_in_output=False, credentials='fake', exceptions=[])
 
     # Check that run() was called with the expected request.
     expected_request_body = {

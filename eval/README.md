@@ -67,10 +67,19 @@ Example usage:
 ```shell
 bazel build eval:run_pipeline && \
 bazel-bin/eval/run_pipeline \
-  --mae_input_pattern gs://${BUCKET_NAME?}/dir/*.xml \
-  --mae_golden_dir gs://${BUCKET_NAME?}/goldens/ \
-  --results_dir gs://${BUCKET_NAME?}/eval/ \
+  --mae_input_pattern gs://${BUCKET?}/dir/*.xml \
+  --mae_golden_dir gs://${BUCKET?}/goldens/ \
+  --results_dir gs://${BUCKET?}/eval/ \
   --project ${PROJECT?}
+```
+
+To run in parallel on Google Cloud Dataflow, add:
+
+```shell
+--runner DataflowRunner \
+--temp_location gs://{$BUCKET?}/tmp \
+--staging_location gs://{$BUCKET?}/staging \
+--setup_file ./setup.py
 ```
 
 ## Calculations and Output
