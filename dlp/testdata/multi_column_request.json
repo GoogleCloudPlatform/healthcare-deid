@@ -33,7 +33,7 @@
        "infoType": {"name": "KnownLastName"}}]},
 
  "item": {"table": {
-   "headers": [{"columnName": "note"}, {"columnName": "last_name"}],
+   "headers": [{"name": "note"}, {"name": "last_name"}],
    "rows": [{"values": [
      {"stringValue": "McBoatface"},
      {"stringValue": "text and PID and MORE PID"}

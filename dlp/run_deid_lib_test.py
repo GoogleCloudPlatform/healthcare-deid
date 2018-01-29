@@ -114,7 +114,7 @@ class RunDeidLibTest(unittest.TestCase):
          'note': 'text and PID and MORE PID',
          'patient_id': '111', 'record_number': '1'}]
 
-    deid_response = {'items': [{'value': 'deid_resp_val'}]}
+    deid_response = {'item': {'value': 'deid_resp_val'}}
     findings = {'findings': [
         {'location': {'byteRange': {'start': '17', 'end': '25'}},
          'infoType': {'name': 'PHONE_NUMBER'}},
@@ -193,11 +193,11 @@ class RunDeidLibTest(unittest.TestCase):
          'note': 'text and PID and MORE PID',
          'patient_id': '111', 'record_number': '1'}]
 
-    deid_response = {'items': [{'table': {
+    deid_response = {'item': {'table': {
         'rows': [{'values': [{'stringValue': 'deidtext'},
                              {'stringValue': 'myname'}]}],
-        'headers': [{'columnName': 'note'}, {'columnName': 'last_name'}]
-    }}]}
+        'headers': [{'name': 'note'}, {'name': 'last_name'}]
+    }}}
     findings = {'findings': [
         {'location': {'byteRange': {'start': '17', 'end': '25'}},
          'infoType': {'name': 'PHONE_NUMBER'}},
