@@ -18,6 +18,11 @@ permissions follow HIPPA guidelines.
   for your project with the "BigQuery User" role.
 * Ensure the service account has access to the BigQuery tables and GCS buckets
   you will be using.
+* Grant the `serviceusage.services.use` permission to your service account. You
+   can do this by giving the service account the OWNER or EDITOR role, or by
+   [creating a custom role](https://console.cloud.google.com/iam-admin/roles)
+   with the permission, and then [granting that custom](https://console.cloud.google.com/iam-admin/iam)
+   role to the service account.
 * Generate service account credentials:
 
 ```shell
