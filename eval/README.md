@@ -77,9 +77,16 @@ To run in parallel on Google Cloud Dataflow, add:
 
 ```shell
 --runner DataflowRunner \
---temp_location gs://{$BUCKET?}/tmp \
---staging_location gs://{$BUCKET?}/staging \
+--temp_location gs://${BUCKET?}/tmp \
+--staging_location gs://${BUCKET?}/staging \
 --setup_file ./setup.py
+```
+
+By default, running on Dataflow will use autoscaling. To disable autoscaling
+and manually specify the number of workers, use:
+
+```shell
+--autoscaling_algorithm=NONE --num_workers=XXX
 ```
 
 ## Calculations and Output

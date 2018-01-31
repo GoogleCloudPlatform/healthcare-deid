@@ -253,6 +253,9 @@ def inspect(row, credentials, project, inspect_config, pass_through_columns,
   parent = 'projects/{0}'.format(project)
   response = _request_with_retry(
       content.inspect(body=req_body, parent=parent).execute)
+  truncated = 'findingsTruncated'
+  if truncated in response['result'] and response['result'][truncated]:
+    raise Exception('Inspect() failed; too many findings:\n%s' % response)
   if 'error' in response:
     raise Exception('Inspect() failed for patient {} record {}: {}'.format(
         row['patient_id'], row['record_number'], response['error']))

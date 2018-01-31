@@ -116,11 +116,11 @@ class RunDeidLibTest(unittest.TestCase):
 
     deid_response = {'item': {'value': 'deid_resp_val'}}
     findings = {'findings': [
-        {'location': {'byteRange': {'start': '17', 'end': '25'}},
+        {'location': {'codepointRange': {'start': '17', 'end': '25'}},
          'infoType': {'name': 'PHONE_NUMBER'}},
-        {'location': {'byteRange': {'start': '9', 'end': '12'}},
+        {'location': {'codepointRange': {'start': '9', 'end': '12'}},
          'infoType': {'name': 'US_CENSUS_NAME'}},
-        {'location': {'byteRange': {'start': '9', 'end': '12'}},
+        {'location': {'codepointRange': {'start': '9', 'end': '12'}},
          'infoType': {'name': 'US_MALE_NAME'}}]}
     inspect_response = {'result': findings}
     fake_content = Mock()
@@ -199,11 +199,11 @@ class RunDeidLibTest(unittest.TestCase):
         'headers': [{'name': 'note'}, {'name': 'last_name'}]
     }}}
     findings = {'findings': [
-        {'location': {'byteRange': {'start': '17', 'end': '25'}},
+        {'location': {'codepointRange': {'start': '17', 'end': '25'}},
          'infoType': {'name': 'PHONE_NUMBER'}},
-        {'location': {'byteRange': {'start': '9', 'end': '12'}},
+        {'location': {'codepointRange': {'start': '9', 'end': '12'}},
          'infoType': {'name': 'US_CENSUS_NAME'}},
-        {'location': {'byteRange': {'start': '9', 'end': '12'}},
+        {'location': {'codepointRange': {'start': '9', 'end': '12'}},
          'infoType': {'name': 'US_MALE_NAME'}}]}
     inspect_response = {'result': findings}
     fake_content = Mock()

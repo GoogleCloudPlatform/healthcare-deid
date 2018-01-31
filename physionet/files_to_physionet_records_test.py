@@ -73,16 +73,16 @@ Patient 1\tNote 22
         {'patient_id': '11', 'record_number': '232',
          'result': {'findings': [
              {'infoType': {'name': ''},
-              'location': {'byteRange': {'end': 38, 'start': 29}}}]},
+              'location': {'codepointRange': {'end': 38, 'start': 29}}}]},
          'original_note': 'some\ncontents'},
         {'patient_id': '1', 'record_number': '22',
          'result': {'findings': [
              {'infoType': {'name': ''},
-              'location': {'byteRange': {'end': 32, 'start': 23}}},
+              'location': {'codepointRange': {'end': 32, 'start': 23}}},
              {'infoType': {'name': ''},
-              'location': {'byteRange': {'end': 67, 'start': 62}}},
+              'location': {'codepointRange': {'end': 67, 'start': 62}}},
              {'infoType': {'name': ''},
-              'location': {'byteRange': {'end': 78, 'start': 68}}}]},
+              'location': {'codepointRange': {'end': 78, 'start': 68}}}]},
          'original_note': 'more\ncontents'}]
 
     self.assertEqual(results, expected_results)

@@ -60,9 +60,9 @@ def _finding(start, end):
   finding['infoType'] = {}
   finding['infoType']['name'] = ''
   finding['location'] = {}
-  finding['location']['byteRange'] = {}
-  finding['location']['byteRange']['start'] = start
-  finding['location']['byteRange']['end'] = end
+  finding['location']['codepointRange'] = {}
+  finding['location']['codepointRange']['start'] = start
+  finding['location']['codepointRange']['end'] = end
   return finding
 
 

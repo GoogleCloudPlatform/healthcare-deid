@@ -36,7 +36,7 @@ class MaeTest(unittest.TestCase):
             'findings': [
                 {
                     'infoType': {'name': 'infoTypeA'},
-                    'location': {'byteRange': {'start': '1', 'end': '5'}}
+                    'location': {'codepointRange': {'start': '1', 'end': '5'}}
                 }
             ]
         }

@@ -22,13 +22,13 @@ MaeTuple = collections.namedtuple('MaeTuple',
 
 
 def _start(finding):
-  if 'start' not in finding['location']['byteRange']:
+  if 'start' not in finding['location']['codepointRange']:
     return 0
-  return int(finding['location']['byteRange']['start'])
+  return int(finding['location']['codepointRange']['start'])
 
 
 def _end(finding):
-  return int(finding['location']['byteRange']['end'])
+  return int(finding['location']['codepointRange']['end'])
 
 
 def generate_dtd(mae_tag_categories, task_name):

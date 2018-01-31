@@ -82,13 +82,20 @@ bazel-bin/dlp/run_deid \
   --mae_dir gs://bucket-name/mae-output-directory
 ```
 
-To run in parallel, add:
+To run in parallel on Google Cloud Dataflow, add:
 
 ```shell
 --runner DataflowRunner \
---temp_location gs://{$BUCKET?}/tmp \
---staging_location gs://{$BUCKET?}/staging \
+--temp_location gs://${BUCKET?}/tmp \
+--staging_location gs://${BUCKET?}/staging \
 --setup_file ./setup.py
+```
+
+By default, running on Dataflow will use autoscaling. To disable autoscaling
+and manually specify the number of workers, use:
+
+```shell
+--autoscaling_algorithm=NONE --num_workers=XXX
 ```
 
 ## Config file
@@ -96,7 +103,7 @@ To run in parallel, add:
 --deid_config_file specifies a json file (example in [sample_deid_config.json](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/sample_deid_config.json))
 that contains an object with five fields:
 
-`deidConfig`: A [DeidentifyConfig](https://cloud.google.com/dlp/docs/reference/rest/v2beta1/content/deidentify#DeidentifyConfig)
+`deidConfig`: A [DeidentifyConfig](https://cloud.google.com/dlp/docs/reference/rest/v2beta2/organizations.deidentifyTemplates#DeidentifyTemplate.DeidentifyConfig)
 for use with the DLP API's content.deidentify method.
 
 `infoTypeCategories`: A list of tags to use in the MAE output and the infoTypes

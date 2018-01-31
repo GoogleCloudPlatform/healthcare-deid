@@ -16,7 +16,6 @@
             {"name": "CHINA_PASSPORT"},
             {"name": "CREDIT_CARD_NUMBER"},
             {"name": "EMAIL_ADDRESS"},
-            {"name": "FIRST_NAME"},
             {"name": "FRANCE_CNI"},
             {"name": "FRANCE_NIR"},
             {"name": "FRANCE_PASSPORT"},
@@ -28,7 +27,6 @@
             {"name": "JAPAN_PASSPORT"},
             {"name": "KOREA_PASSPORT"},
             {"name": "KOREA_RRN"},
-            {"name": "LAST_NAME"},
             {"name": "LOCATION"},
             {"name": "MAC_ADDRESS"},
             {"name": "MAC_ADDRESS_LOCAL"},
@@ -46,7 +44,6 @@
             {"name": "UK_NATIONAL_INSURANCE_NUMBER"},
             {"name": "UK_PASSPORT"},
             {"name": "UK_TAXPAYER_REFERENCE"},
-            {"name": "US_CENSUS_NAME"},
             {"name": "US_DRIVERS_LICENSE_NUMBER"},
             {"name": "US_EMPLOYER_IDENTIFICATION_NUMBER"},
             {"name": "US_HEALTHCARE_NPI"},
@@ -67,7 +64,7 @@
   "infoTypeCategories": [
     {
       "name": "NAME",
-      "infoTypes": ["US_CENSUS_NAME", "PERSON_NAME"]
+      "infoTypes": ["PERSON_NAME"]
     },
     {
       "name": "AGE",
@@ -179,12 +176,12 @@
     {
       "name": "FIRST_NAME",
       "infoTypes": [
-        "FIRST_NAME", "KnownFirstName", "DatasetFirstName"
+        "KnownFirstName", "DatasetFirstName"
       ]
     },
     {
       "name": "LAST_NAME",
-      "infoTypes": ["LAST_NAME", "KnownLastName"]
+      "infoTypes": ["KnownLastName"]
     },
     {
       "name": "UNKNOWN_CLASSIFICATION_TYPE",
