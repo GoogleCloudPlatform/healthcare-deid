@@ -12,7 +12,7 @@
             {"name": "AGE"},
             {"name": "MEDICARE_NUMBER"},
             {"name": "UNKNOWN_IDENTIFIER"},
-            {"name": "EMAIL_ADDRESS"},
+            {"name": "EMAIL_ADDRESS"}
           ],
           "primitiveTransformation": {
             "replaceWithInfoTypeConfig": {}
