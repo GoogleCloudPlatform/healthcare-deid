@@ -46,6 +46,7 @@ py_test(
     data = [
         "//dlp/mae_testdata:sample.dtd",
         "//dlp/mae_testdata:sample.xml",
+        "//dlp/testdata:batch_request.json",
         "//dlp/testdata:config.json",
         "//dlp/testdata:multi_column_config.json",
         "//dlp/testdata:multi_column_request.json",

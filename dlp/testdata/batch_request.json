@@ -23,17 +23,18 @@
                   {"name": "US_MALE_NAME"}],
     "customInfoTypes": [
       {"dictionary":
-       {"wordList": {"words": ["Boaty"]}},
+       {"wordList": {"words": ["Boaty", "Zephod"]}},
        "infoType": {"name": "DatasetFirstName"}},
       {"dictionary":
-       {"wordList": {"words": ["Boaty"]}},
+       {"wordList": {"words": ["Boaty", "Zephod"]}},
        "infoType": {"name": "KnownFirstName"}},
       {"dictionary":
-       {"wordList": {"words": ["McBoatface"]}},
+       {"wordList": {"words": ["McBoatface", "Beeblebrox"]}},
        "infoType": {"name": "KnownLastName"}}]},
 
   "item": {"table": {
-    "rows": [{"values": [{"stringValue": "text and PID and MORE PID"}]}],
+    "rows": [{"values": [{"stringValue": "text and PID and MORE PID"}]},
+             {"values": [{"stringValue": "note2 text"}]}],
     "headers": [{"name": "note"}]
   }}
 }

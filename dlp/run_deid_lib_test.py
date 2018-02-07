@@ -16,19 +16,22 @@
 
 from __future__ import absolute_import
 
+import collections
 import json
 import os
 import unittest
 
 from apache_beam.io import iobase
+from apiclient import errors
 from common import testutil
 from dlp import run_deid_lib
+import httplib2
 
 from mock import Mock
 from mock import patch
 
 TESTDATA_DIR = 'dlp/'
-fake_db = {}
+fake_db = collections.defaultdict(list)
 
 
 class FakeSource(iobase.BoundedSource):
@@ -48,9 +51,10 @@ class FakeWriter(iobase.Writer):
 
   def __init__(self, table_name):
     self._table_name = table_name
+    fake_db.clear()
 
   def write(self, value):
-    fake_db[self._table_name] = value
+    fake_db[self._table_name].append(value)
 
   def close(self):
     pass
@@ -98,6 +102,46 @@ def ordered(obj):
     return obj
 
 
+EXPECTED_DEID_RESULT = [
+    {'note': 'note1 redacted', 'patient_id': '111', 'record_number': '1'},
+    {'note': 'note2 redacted', 'patient_id': '222', 'record_number': '2'}]
+
+EXPECTED_MAE1 = """<?xml version="1.0" encoding="UTF-8" ?>
+<InspectPhiTask>
+<TEXT><![CDATA[text and PID and MORE PID]]></TEXT>
+<TAGS>
+<PHONE id="PHONE0" spans="9~12" />
+</TAGS></InspectPhiTask>
+"""
+EXPECTED_MAE2 = """<?xml version="1.0" encoding="UTF-8" ?>
+<InspectPhiTask>
+<TEXT><![CDATA[note2 text]]></TEXT>
+<TAGS>
+<FIRST_NAME id="FIRST_NAME0" spans="17~25" />
+</TAGS></InspectPhiTask>
+"""
+
+DEID_HEADERS = [
+    {'name': 'first_name'}, {'name': 'last_name'}, {'name': 'note'},
+    {'name': 'patient_id'}, {'name': 'record_number'}]
+
+
+def bq_schema():
+  # 'name' is a special keyword arg for Mock, so we have to set it like this,
+  # instead of passing it to the constructor.
+  schema = [Mock(), Mock(), Mock(), Mock(), Mock()]
+  schema[0].name = 'first_name'
+  schema[1].name = 'last_name'
+  schema[2].name = 'note'
+  schema[3].name = 'patient_id'
+  schema[4].name = 'record_number'
+  return schema
+
+
+def sval(x):
+  return {'stringValue': x}
+
+
 class RunDeidLibTest(unittest.TestCase):
 
   @patch('apiclient.discovery.build')
@@ -114,13 +158,19 @@ class RunDeidLibTest(unittest.TestCase):
          'note': 'text and PID and MORE PID',
          'patient_id': '111', 'record_number': '1'}]
 
-    deid_response = {'item': {'value': 'deid_resp_val'}}
+    deid_response = {'item': {'table': {
+        'rows': [{'values': [{'stringValue': 'deid_resp_val'}]}],
+        'headers': [{'name': 'note'}]
+    }}}
     findings = {'findings': [
-        {'location': {'codepointRange': {'start': '17', 'end': '25'}},
+        {'location': {'codepointRange': {'start': '17', 'end': '25'},
+                      'tableLocation': {}},
          'infoType': {'name': 'PHONE_NUMBER'}},
-        {'location': {'codepointRange': {'start': '9', 'end': '12'}},
+        {'location': {'codepointRange': {'start': '9', 'end': '12'},
+                      'tableLocation': {}},
          'infoType': {'name': 'US_CENSUS_NAME'}},
-        {'location': {'codepointRange': {'start': '9', 'end': '12'}},
+        {'location': {'codepointRange': {'start': '9', 'end': '12'},
+                      'tableLocation': {}},
          'infoType': {'name': 'US_MALE_NAME'}}]}
     inspect_response = {'result': findings}
     fake_content = Mock()
@@ -133,13 +183,8 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
-    # 'name' is a special keyword arg for Mock, so we have to set it like this,
-    # instead of passing it to the constructor.
-    schema = [Mock(), Mock()]
-    schema[0].name = 'first_name'
-    schema[1].name = 'last_name'
     rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum']]
-    results_table = FakeBqResults(schema, rows)
+    results_table = FakeBqResults(bq_schema(), rows)
     query_job.destination.fetch_data.return_value = results_table
     bq_client = Mock()
     bq_client.run_async_query.return_value = query_job
@@ -150,7 +195,7 @@ class RunDeidLibTest(unittest.TestCase):
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', deid_cfg, 'InspectPhiTask',
         'fake-credentials', 'project', storage_client_fn, bq_client, None,
-        'dlp', pipeline_args=None)
+        'dlp', batch_size=1, pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/request.json')) as f:
@@ -173,10 +218,11 @@ class RunDeidLibTest(unittest.TestCase):
 
     self.assertEqual(
         fake_db['deid_tbl'],
-        {'patient_id': '111', 'record_number': '1', 'note': 'deid_resp_val'})
+        [{'patient_id': '111', 'record_number': '1', 'note': 'deid_resp_val'}])
     self.assertEqual(
         fake_db['findings_tbl'],
-        {'patient_id': '111', 'record_number': '1', 'findings': str(findings)})
+        [{'patient_id': '111', 'record_number': '1',
+          'findings': str(findings)}])
 
   @patch('apiclient.discovery.build')
   @patch('apache_beam.io.BigQuerySink')
@@ -199,11 +245,14 @@ class RunDeidLibTest(unittest.TestCase):
         'headers': [{'name': 'note'}, {'name': 'last_name'}]
     }}}
     findings = {'findings': [
-        {'location': {'codepointRange': {'start': '17', 'end': '25'}},
+        {'location': {'codepointRange': {'start': '17', 'end': '25'},
+                      'tableLocation': {}},
          'infoType': {'name': 'PHONE_NUMBER'}},
-        {'location': {'codepointRange': {'start': '9', 'end': '12'}},
+        {'location': {'codepointRange': {'start': '9', 'end': '12'},
+                      'tableLocation': {}},
          'infoType': {'name': 'US_CENSUS_NAME'}},
-        {'location': {'codepointRange': {'start': '9', 'end': '12'}},
+        {'location': {'codepointRange': {'start': '9', 'end': '12'},
+                      'tableLocation': {'rowIndex': '0'}},
          'infoType': {'name': 'US_MALE_NAME'}}]}
     inspect_response = {'result': findings}
     fake_content = Mock()
@@ -216,13 +265,8 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
-    # 'name' is a special keyword arg for Mock, so we have to set it like this,
-    # instead of passing it to the constructor.
-    schema = [Mock(), Mock()]
-    schema[0].name = 'first_name'
-    schema[1].name = 'last_name'
     rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum']]
-    results_table = FakeBqResults(schema, rows)
+    results_table = FakeBqResults(bq_schema(), rows)
     query_job.destination.fetch_data.return_value = results_table
     bq_client = Mock()
     bq_client.run_async_query.return_value = query_job
@@ -230,12 +274,13 @@ class RunDeidLibTest(unittest.TestCase):
     deid_cfg_file = os.path.join(TESTDATA_DIR,
                                  'testdata/multi_column_config.json')
 
-    storage_client_fn = lambda x, y: testutil.FakeStorageClient()
+    storage_client_fn = lambda x: testutil.FakeStorageClient()
     mae_dir = ''  # Not compatible with multi-column.
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
         mae_dir, deid_cfg_file, 'InspectPhiTask', 'fake-credentials', 'project',
-        storage_client_fn, bq_client, None, 'dlp', pipeline_args=None)
+        storage_client_fn, bq_client, None, 'dlp', batch_size=1,
+        pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(
@@ -248,8 +293,178 @@ class RunDeidLibTest(unittest.TestCase):
 
     self.assertEqual(
         fake_db['deid_tbl'],
-        {'patient_id': '111', 'record_number': '1', 'note': 'deidtext',
-         'last_name': 'myname'})
+        [{'patient_id': '111', 'record_number': '1', 'note': 'deidtext',
+          'last_name': 'myname'}])
+
+  # De-id two notes and batch them together so each of inspect() and deid() is
+  # still only called once.
+  @patch('apiclient.discovery.build')
+  @patch('apache_beam.io.BigQuerySink')
+  @patch('apache_beam.io.BigQuerySource')
+  def testBatchDeid(self, mock_bq_source_fn, mock_bq_sink_fn, mock_build_fn):
+    def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
+      return FakeSink(table_name)
+    mock_bq_sink_fn.side_effect = make_sink
+
+    mock_bq_source_fn.return_value = FakeSource()
+    mock_bq_source_fn.return_value._records = [
+        {'first_name': 'Boaty', 'last_name': 'McBoatface',
+         'note': 'text and PID and MORE PID',
+         'patient_id': '111', 'record_number': '1'},
+        {'first_name': 'Zephod', 'last_name': 'Beeblebrox',
+         'note': 'note2 text', 'patient_id': '222', 'record_number': '2'}]
+
+    deid_response = {'item': {'table': {
+        'rows': [{'values': [sval('Boaty'), sval('McBoatface'),
+                             sval('note1 redacted'), sval('111'), sval('1')]},
+                 {'values': [sval('Zephod'), sval('Beeblebrox'),
+                             sval('note2 redacted'), sval('222'), sval('2')]}],
+        'headers': DEID_HEADERS
+    }}}
+    findings = {'findings': [
+        {'location': {'codepointRange': {'start': '9', 'end': '12'},
+                      'tableLocation': {'rowIndex': '0'}},
+         'infoType': {'name': 'PHONE_NUMBER'}},
+        {'location': {'codepointRange': {'start': '17', 'end': '25'},
+                      'tableLocation': {'rowIndex': '1'}},
+         'infoType': {'name': 'US_MALE_NAME'}}]}
+    inspect_response = {'result': findings}
+    fake_content = Mock()
+    fake_content.inspect.return_value = Mock(
+        execute=Mock(return_value=inspect_response))
+    fake_content.deidentify.return_value = Mock(
+        execute=Mock(return_value=deid_response))
+    fake_projects = Mock(content=Mock(return_value=fake_content))
+    fake_dlp = Mock(projects=Mock(return_value=fake_projects))
+    mock_build_fn.return_value = fake_dlp
+
+    query_job = Mock()
+    rows = [['Boaty', 'McBoatface', 'text and PID and MORE PID', '111', '1'],
+            ['Zephod', 'Beeblebrox', 'note2 text', '222', '2']]
+    results_table = FakeBqResults(bq_schema(), rows)
+    query_job.destination.fetch_data.return_value = results_table
+    bq_client = Mock()
+    bq_client.run_async_query.return_value = query_job
+
+    deid_cfg_file = os.path.join(TESTDATA_DIR,
+                                 'testdata/config.json')
+
+    storage_client_fn = lambda x: testutil.FakeStorageClient()
+    run_deid_lib.run_pipeline(
+        'input_query', None, 'deid_tbl', 'findings_tbl',
+        'gs://mae-bucket/mae-dir', deid_cfg_file, 'InspectPhiTask',
+        'fake-credentials', 'project', storage_client_fn, bq_client, None,
+        'dlp', batch_size=2, pipeline_args=None)
+
+    expected_request_body = {}
+    with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
+      expected_request_body = json.load(f)
+    fake_content.deidentify.assert_called_once()
+    _, kwargs = fake_content.deidentify.call_args
+    self.maxDiff = 10000
+    self.assertEqual(ordered(expected_request_body), ordered(kwargs['body']))
+
+    self.assertEqual(fake_db['deid_tbl'], EXPECTED_DEID_RESULT)
+    self.assertEqual(EXPECTED_MAE1,
+                     testutil.get_gcs_file('mae-bucket/mae-dir/111-1.xml'))
+    self.assertEqual(EXPECTED_MAE2,
+                     testutil.get_gcs_file('mae-bucket/mae-dir/222-2.xml'))
+
+  # De-id two notes and batch them together so each of inspect() and deid() is
+  # still only called once.
+  # However, there are too many findings for a single request, so we re-try the
+  # request as two separate requests.
+  @patch('apiclient.discovery.build')
+  @patch('apache_beam.io.BigQuerySink')
+  @patch('apache_beam.io.BigQuerySource')
+  def testReBatchDeid(self, mock_bq_source_fn, mock_bq_sink_fn, mock_build_fn):
+    def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
+      return FakeSink(table_name)
+    mock_bq_sink_fn.side_effect = make_sink
+
+    mock_bq_source_fn.return_value = FakeSource()
+    mock_bq_source_fn.return_value._records = [
+        {'first_name': 'Boaty', 'last_name': 'McBoatface',
+         'note': 'text and PID and MORE PID',
+         'patient_id': '111', 'record_number': '1'},
+        {'first_name': 'Zephod', 'last_name': 'Beeblebrox',
+         'note': 'note2 text', 'patient_id': '222', 'record_number': '2'}]
+
+    deid_response1 = {'item': {'table': {
+        'rows': [{'values': [sval('Boaty'), sval('McBoatface'),
+                             sval('note1 redacted'), sval('111'), sval('1')]}],
+        'headers': DEID_HEADERS}}}
+    deid_response2 = {'item': {'table': {
+        'rows': [{'values': [sval('Zephod'), sval('Beeblebrox'),
+                             sval('note2 redacted'), sval('222'), sval('2')]}],
+        'headers': DEID_HEADERS}}}
+
+    findings1 = {'findings': [
+        {'location': {'codepointRange': {'start': '9', 'end': '12'},
+                      'tableLocation': {}},
+         'infoType': {'name': 'PHONE_NUMBER'}}]}
+    findings2 = {'findings': [
+        {'location': {'codepointRange': {'start': '17', 'end': '25'},
+                      'tableLocation': {}},
+         'infoType': {'name': 'US_MALE_NAME'}}]}
+    inspect_response_truncated = {'result': {'findingsTruncated': 'True'}}
+    inspect_responses = [inspect_response_truncated, {'result': findings1},
+                         {'result': findings2}]
+    def inspect_execute():
+      response = inspect_responses[inspect_execute.call_count]
+      inspect_execute.call_count += 1
+      return response
+    inspect_execute.call_count = 0
+    fake_content = Mock()
+    fake_content.inspect.return_value = Mock(execute=inspect_execute)
+
+    deid_responses = ['Exception', deid_response1, deid_response2]
+    def deid_execute():
+      response = deid_responses[deid_execute.call_count]
+      deid_execute.call_count += 1
+      if response == 'Exception':
+        content = ('{"error": {"message": "Too many findings to de-identify. '
+                   'Retry with a smaller request."}}')
+        raise errors.HttpError(httplib2.Response({'status': 400}), content)
+      return response
+    deid_execute.call_count = 0
+    fake_content.deidentify.return_value = Mock(execute=deid_execute)
+
+    fake_projects = Mock(content=Mock(return_value=fake_content))
+    fake_dlp = Mock(projects=Mock(return_value=fake_projects))
+    mock_build_fn.return_value = fake_dlp
+
+    query_job = Mock()
+    rows = [['Boaty', 'McBoatface', 'text and PID and MORE PID', '111', '1'],
+            ['Zephod', 'Beeblebrox', 'note2 text', '222', '2']]
+    results_table = FakeBqResults(bq_schema(), rows)
+    query_job.destination.fetch_data.return_value = results_table
+    bq_client = Mock()
+    bq_client.run_async_query.return_value = query_job
+
+    deid_cfg_file = os.path.join(TESTDATA_DIR,
+                                 'testdata/config.json')
+
+    storage_client_fn = lambda x: testutil.FakeStorageClient()
+    run_deid_lib.run_pipeline(
+        'input_query', None, 'deid_tbl', 'findings_tbl',
+        'gs://mae-bucket/mae-dir', deid_cfg_file, 'InspectPhiTask',
+        'fake-credentials', 'project', storage_client_fn, bq_client, None,
+        'dlp', batch_size=2, pipeline_args=None)
+
+    expected_request_body = {}
+    with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
+      expected_request_body = json.load(f)
+    fake_content.deidentify.assert_called()
+    _, kwargs = fake_content.deidentify.call_args_list[0]
+    self.maxDiff = 10000
+    self.assertEqual(ordered(expected_request_body), ordered(kwargs['body']))
+
+    self.assertEqual(fake_db['deid_tbl'], EXPECTED_DEID_RESULT)
+    self.assertEqual(EXPECTED_MAE1,
+                     testutil.get_gcs_file('mae-bucket/mae-dir/111-1.xml'))
+    self.assertEqual(EXPECTED_MAE2,
+                     testutil.get_gcs_file('mae-bucket/mae-dir/222-2.xml'))
 
 if __name__ == '__main__':
   unittest.main()

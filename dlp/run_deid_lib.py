@@ -92,35 +92,28 @@ def _request_with_retry(fn, num_retries=5):
 def get_deid_text(deid_response, pass_through_columns, target_columns):
   """Get the de-id'd text from the deid() API call response."""
   # Sample response for a request with a table as input:
-  # {'items': [
-  #    {'table': {
+  # {'item': {'table': {
   #      'headers': [{'name': 'note'}, {'name': 'first_name'}],
   #      'rows': [
   #        {'values': [{'stringValue': 'text'}, {'stringValue': 'Pat'}]}
   #      ]
-  #    }}
-  #  ...
-  # ] }
+  #    }}}
   response = {}
   for col in pass_through_columns:
     response[col['name']] = deid_response[col['name']]
 
-  if len(target_columns) == 1:
-    response[target_columns[0]['name']] = (
-        deid_response['raw_response']['item']['value'])
-  else:
-    table = deid_response['raw_response']['item']['table']
-    for col in target_columns:
-      i = _get_index(col['name'], table['headers'])
-      val = ''
-      if i >= 0 and table['rows']:
-        val = table['rows'][0]['values'][i][col['type']]
-      response[col['name']] = val
+  table = deid_response['item']['table']
+  for col in target_columns:
+    i = _get_index(col['name'], table['headers'])
+    val = ''
+    if i >= 0 and table['rows']:
+      val = table['rows'][0]['values'][i][col['type']]
+    response[col['name']] = val
 
   return response
 
 
-def _per_row_inspect_config(inspect_config, per_row_types, row):
+def _per_row_inspect_config(inspect_config, per_row_types, rows):
   """Return a copy of inspect_config with the given per-row types added."""
   if not per_row_types:
     return inspect_config
@@ -128,45 +121,63 @@ def _per_row_inspect_config(inspect_config, per_row_types, row):
   inspect_config = copy.deepcopy(inspect_config)
   if 'customInfoTypes' not in inspect_config:
     inspect_config['customInfoTypes'] = []
+
   for per_row_type in per_row_types:
-    col = per_row_type['columnName']
-    if col not in row:
-      raise Exception('customInfoType column "{}" not found.'.format(col))
+    column_name = per_row_type['columnName']
+    words = set()
+    for row in rows:
+      if column_name not in row:
+        raise Exception(
+            'customInfoType column "{}" not found.'.format(column_name))
+      words.add(row[column_name])
     inspect_config['customInfoTypes'].append({
         'infoType': {'name': per_row_type['infoTypeName']},
-        'dictionary': {'wordList': {'words': [row[col]]}}
+        'dictionary': {'wordList': {'words': list(words)}}
     })
   return inspect_config
 
 
-# Creates the 'item' field for a deid or inspect request.
-# In the simple case, returns a single value, e.g.:
-#   'item': { 'type': 'text/plain', 'value': 'given text' }
-# If multiple columns are specified, creates a table with a single row, e.g.:
+# Creates the 'item' field for a deid or inspect request, e.g.:
 #   'item': {'table': {
 #     'headers': [{'name': 'note'}, {'name': 'secondary note'}]
 #     'rows': [ {
-#       'values': [{'stringValue': 'text of the note'},
-#                  {'stringValue': 'text of the secondary note'}]
-#     }]
+#       {'values': [{'stringValue': 'text of the note'},
+#                   {'stringValue': 'text of the secondary note'}]},
+#       {'values': [{'stringValue': 'row2 note text'},
+#                   {'stringValue': 'row2 secondary note'}]}
+#     } ]
 #   }}
-def _create_item(target_columns, row):
-  if len(target_columns) == 1:
-    return {'type': 'text/plain', 'value': row[target_columns[0]['name']]}
-  else:
-    table = {'headers': [], 'rows': [{'values': []}]}
-    for col in target_columns:
-      table['headers'].append({'name': col['name']})
-      table['rows'][0]['values'].append({col['type']: row[col['name']]})
-    return {'table': table}
+def _create_item(target_columns, rows):
+  table = {'headers': [], 'rows': []}
+  for _ in rows:
+    table['rows'].append({'values': []})
+  for col in target_columns:
+    table['headers'].append({'name': col['name']})
+    for i in range(len(rows)):
+      table['rows'][i]['values'].append({col['type']: rows[i][col['name']]})
+  return {'table': table}
 
 
-def deid(row, credentials, project, deid_config, inspect_config,
+def _rebatch_deid(rows, credentials, project, deid_config, inspect_config,
+                  pass_through_columns, target_columns, per_row_types,
+                  dlp_api_name):
+  """Call deid() twice with half the list each time and merge the result."""
+  half_size = len(rows) / 2
+  ret_a = deid(rows[:half_size], credentials, project, deid_config,
+               inspect_config, pass_through_columns, target_columns,
+               per_row_types, dlp_api_name)
+  ret_b = deid(rows[half_size:], credentials, project, deid_config,
+               inspect_config, pass_through_columns, target_columns,
+               per_row_types, dlp_api_name)
+  return ret_a + ret_b
+
+
+def deid(rows, credentials, project, deid_config, inspect_config,
          pass_through_columns, target_columns, per_row_types, dlp_api_name):
   """Put the data through the DLP API DeID method.
 
   Args:
-    row: A BigQuery row with data to send to the DLP API.
+    rows: A list of BigQuery rows with data to send to the DLP API.
     credentials: oauth2client.Credentials for authentication with the DLP API.
     project: The project to send the request for.
     deid_config: DeidentifyConfig map, as defined in the DLP API:
@@ -184,41 +195,80 @@ def deid(row, credentials, project, deid_config, inspect_config,
   Raises:
     Exception: If the request fails.
   Returns:
-    A dict containing:
-     - 'raw_response': The result from the DLP API call.
+    A list of dicts (one per row) containing:
+     - 'item': The 'item' element of the result from the DLP API call.
      - An entry for each pass-through column.
   """
   dlp = discovery.build(dlp_api_name, 'v2beta2', credentials=credentials)
   projects = dlp.projects()
   content = projects.content()
 
-  inspect_config = _per_row_inspect_config(inspect_config, per_row_types, row)
+  inspect_config = _per_row_inspect_config(inspect_config, per_row_types, rows)
   req_body = {
       'deidentifyConfig': deid_config,
       'inspectConfig': inspect_config,
-      'item': _create_item(target_columns, row)
+      'item': _create_item(target_columns, rows)
   }
   parent = 'projects/{0}'.format(project)
-  response = _request_with_retry(
-      content.deidentify(body=req_body, parent=parent).execute)
+  try:
+    response = _request_with_retry(
+        content.deidentify(body=req_body, parent=parent).execute)
+  except errors.HttpError as error:
+    error_json = json.loads(error.content)
+    if (error.resp.status != 400 or
+        'Retry with a smaller request.' not in error_json['error']['message'] or
+        len(rows) == 1):
+      raise error
+    logging.warning('Batch deid() request too large (%s rows). '
+                    'Retrying as two smaller batches.', len(rows))
+    return _rebatch_deid(rows, credentials, project, deid_config,
+                         inspect_config, pass_through_columns, target_columns,
+                         per_row_types, dlp_api_name)
+
   if 'error' in response:
-    patient_id = row['patient_id'] if 'patient_id' in row else '?'
-    record_number = row['record_number'] if 'record_number' in row else '?'
-    raise Exception('Deidentify() failed for patient {} record {}: {}'.format(
-        patient_id, record_number, response['error']))
+    raise Exception('Deidentify() failed: {}'.format(response['error']))
 
-  ret = {'raw_response': response}
-  for col in pass_through_columns:
-    ret[col['name']] = row[col['name']]
-  return ret
+  retvals = []
+  for i in range(len(rows)):
+    response_row = response['item']['table']['rows'][i]
+    item = {'table': {'headers': response['item']['table']['headers'],
+                      'rows': [response_row]}}
+    ret = {'item': item}
+    for col in pass_through_columns:
+      ret[col['name']] = rows[i][col['name']]
+    retvals.append(ret)
+
+  return retvals
 
 
-def inspect(row, credentials, project, inspect_config, pass_through_columns,
+def _rebatch_inspect(
+    rows, credentials, project, inspect_config, pass_through_columns,
+    target_columns, per_row_types, dlp_api_name):
+  """Call inspect() twice with half the list each time and merge the result."""
+  half_size = len(rows) / 2
+  ret_a = inspect(rows[:half_size], credentials, project, inspect_config,
+                  pass_through_columns, target_columns, per_row_types,
+                  dlp_api_name)
+  ret_b = inspect(rows[half_size:], credentials, project, inspect_config,
+                  pass_through_columns, target_columns, per_row_types,
+                  dlp_api_name)
+  # Merge ret_b into ret_a and adjust the row indexes up accordingly.
+  for retval in ret_b:
+    for finding in retval['result']['findings']:
+      index = 0
+      if 'rowIndex' in finding['location']['tableLocation']:
+        index = int(finding['location']['tableLocation']['rowIndex'])
+      finding['location']['tableLocation']['rowIndex'] = index + half_size
+    ret_a.append(retval)
+  return ret_a
+
+
+def inspect(rows, credentials, project, inspect_config, pass_through_columns,
             target_columns, per_row_types, dlp_api_name):
   """Put the data through the DLP API inspect method.
 
   Args:
-    row: A BigQuery row with data to send to the DLP API.
+    rows: A list of BigQuery rows with data to send to the DLP API.
     credentials: oauth2client.Credentials for authentication with the DLP API.
     project: The project to send the request for.
     inspect_config: inspectConfig map, as defined in the DLP API:
@@ -234,7 +284,7 @@ def inspect(row, credentials, project, inspect_config, pass_through_columns,
   Raises:
     Exception: If the request fails.
   Returns:
-    A dict containing:
+    A list of dicts (one per row) containing:
      - 'result': The result from the DLP API call.
      - 'original_note': The original note, to be used in generating MAE output.
      - An entry for each pass-through column.
@@ -243,11 +293,11 @@ def inspect(row, credentials, project, inspect_config, pass_through_columns,
   projects = dlp.projects()
   content = projects.content()
 
-  inspect_config = _per_row_inspect_config(inspect_config, per_row_types, row)
+  inspect_config = _per_row_inspect_config(inspect_config, per_row_types, rows)
 
   req_body = {
       'inspectConfig': inspect_config,
-      'item': _create_item(target_columns, row)
+      'item': _create_item(target_columns, rows)
   }
 
   parent = 'projects/{0}'.format(project)
@@ -255,18 +305,35 @@ def inspect(row, credentials, project, inspect_config, pass_through_columns,
       content.inspect(body=req_body, parent=parent).execute)
   truncated = 'findingsTruncated'
   if truncated in response['result'] and response['result'][truncated]:
-    raise Exception('Inspect() failed; too many findings:\n%s' % response)
-  if 'error' in response:
-    raise Exception('Inspect() failed for patient {} record {}: {}'.format(
-        row['patient_id'], row['record_number'], response['error']))
+    if len(rows) == 1:
+      raise Exception('Inspect() failed; too many findings (> %s).' %
+                      len(response['result']['findings']))
+    logging.warning('Batch inspect() request too large (%s rows). '
+                    'Retrying as two smaller batches.', len(rows))
+    return _rebatch_inspect(
+        rows, credentials, project, inspect_config, pass_through_columns,
+        target_columns, per_row_types, dlp_api_name)
 
-  ret = {'result': response['result']}
-  # Pass the original note along for use in MAE output.
-  if len(target_columns) == 1:
-    ret['original_note'] = row[target_columns[0]['name']]
-  for col in pass_through_columns:
-    ret[col['name']] = row[col['name']]
-  return ret
+  if 'error' in response:
+    raise Exception('Inspect() failed: {}'.format(response['error']))
+
+  retvals = []
+  for row in rows:
+    ret = {'result': {'findings': []}}
+    # Pass the original note along for use in MAE output.
+    if len(target_columns) == 1:
+      ret['original_note'] = row[target_columns[0]['name']]
+    for col in pass_through_columns:
+      ret[col['name']] = row[col['name']]
+    retvals.append(ret)
+  for finding in response['result']['findings']:
+    if not finding['location']['tableLocation']:
+      retvals[0]['result']['findings'].append(finding)
+    else:
+      index = int(finding['location']['tableLocation']['rowIndex'])
+      retvals[index]['result']['findings'].append(finding)
+
+  return retvals
 
 
 def format_findings(inspect_result, pass_through_columns):
@@ -443,6 +510,25 @@ def _load_per_dataset_types(per_dataset_cfg, input_query, input_table,
   return custom_info_types
 
 
+# These functions take a BigQuery row from either before (old) or after (new)
+# google-cloud-bigquery v0.28 and convert it to a simple map from field name to
+# value. This allows us to minimize special handling for supporting both
+# versions, and is also necessary because the new Row object causes infinite
+# recursion when Dataflow attempts to encode it.
+def _convert_new_row(row):
+  new_row = {}
+  for field_name, value in row.items():
+    new_row[field_name] = value
+  return new_row
+
+
+def _convert_old_row(row, field_indexes):
+  new_row = {}
+  for field_name, index in sorted(field_indexes.items(), key=lambda x: x[1]):
+    new_row[field_name] = row[index]
+  return new_row
+
+
 def _generate_schema(pass_through_columns, target_columns):
   """Generate a BigQuery schema with the configured columns."""
   m = {'stringValue': 'STRING', 'integerValue': 'INTEGER',
@@ -453,10 +539,75 @@ def _generate_schema(pass_through_columns, target_columns):
   return ', '.join(segments)
 
 
+def _get_reads(p, input_table, input_query, bq_client, bq_config_fn,
+               batch_size):
+  """Read data from BigQuery.
+
+  Args:
+    p: A beam.Pipeline object.
+    input_table: Table to get BigQuery data from. Only one of this and
+      input_query may be set.
+    input_query: Query to get BigQuery data from. Only one of this and
+      input_table may be set.
+    bq_client: A bigquery.Client object.
+    bq_config_fn: The bigquery.job.QueryJobConfig function.
+    batch_size: How many rows to send to the DLP API in each request. If this is
+      1, we can use Beam's built-in BigQuerySource. Otherwise, we need to read
+      directly from BigQuery and batch the rows together.
+  Returns:
+    A PCollection of rows from the given BigQuery input table or query.
+  """
+  if batch_size == 1:
+    bq = None
+    if input_table:
+      bq = beam.io.BigQuerySource(input_table)
+    else:
+      bq = beam.io.BigQuerySource(query=input_query)
+    # Wrap each read in a list so it's identical to a batched read of size 1.
+    return (p | 'read' >> beam.io.Read(bq)
+            | 'wrap' >> beam.Map(lambda read: [read]))
+
+  old_api = hasattr(bq_client, 'run_async_query')
+  query = input_query or 'SELECT * FROM [%s]' % input_table.replace(':', '.')
+  results_table = None
+  field_indexes = {}
+  if old_api:
+    query_job = bq_client.run_async_query(str(uuid.uuid4()), query)
+    query_job.begin()
+    query_job.result()  # Wait for the job to complete.
+    query_job.destination.reload()
+    results_table = query_job.destination.fetch_data()
+    i = 0
+    for entry in results_table.schema:
+      field_indexes[entry.name] = i
+      i += 1
+  else:
+    job_config = bq_config_fn()
+    job_config.use_legacy_sql = True
+    query_job = bq_client.query(query, job_config=job_config)
+    results_table = query_job.result()
+
+  buf = []
+  batched_rows = []
+  for row in results_table:
+    if old_api:
+      row = _convert_old_row(row, field_indexes)
+    else:
+      row = _convert_new_row(row)
+    buf.append(row)
+    if len(buf) >= batch_size:
+      batched_rows.append(buf)
+      buf = []
+  if buf:
+    batched_rows.append(buf)
+
+  return p | beam.Create(batched_rows)
+
+
 def run_pipeline(input_query, input_table, deid_table, findings_table,
                  mae_dir, deid_config_file, task_name, credentials, project,
                  storage_client_fn, bq_client, bq_config_fn, dlp_api_name,
-                 pipeline_args):
+                 batch_size, pipeline_args):
   """Read the records from BigQuery, DeID them, and write them to BigQuery."""
   if (input_query is None) == (input_table is None):
     return 'Exactly one of input_query and input_table must be set.'
@@ -474,20 +625,14 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
         '"inspect" in the config file.')
 
   p = beam.Pipeline(options=PipelineOptions(pipeline_args))
-  reads = None
-  if input_table:
-    reads = p | 'read' >> beam.io.Read(beam.io.BigQuerySource(input_table))
-  else:
-    bq = beam.io.BigQuerySource(query=input_query)
-    reads = (p |
-             'read' >> beam.io.Read(bq))
+  reads = _get_reads(p, input_table, input_query, bq_client, bq_config_fn,
+                     batch_size)
 
   inspect_data = None
   if findings_table or mae_dir:
-    inspect_data = (
-        reads | 'inspect' >> beam.Map(
-            inspect, credentials, project, inspect_config, pass_through_columns,
-            target_columns, per_row_types, dlp_api_name))
+    inspect_data = (reads | 'inspect' >> beam.FlatMap(
+        inspect, credentials, project, inspect_config,
+        pass_through_columns, target_columns, per_row_types, dlp_api_name))
   if findings_table:
     # Write the inspect result to BigQuery. We don't process the result, even
     # if it's for multiple columns.
@@ -513,7 +658,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
     # Call deidentify and write the result to BigQuery.
     schema = _generate_schema(pass_through_columns, target_columns)
     _ = (reads
-         | 'deid' >> beam.Map(
+         | 'deid' >> beam.FlatMap(
              deid,
              credentials, project, deid_config, inspect_config,
              pass_through_columns, target_columns, per_row_types, dlp_api_name)
@@ -557,3 +702,6 @@ def add_all_args(parser):
   parser.add_argument('--dlp_api_name', type=str, required=False,
                       help='Name to use in the DLP API url.',
                       default='dlp')
+  parser.add_argument('--batch_size', type=int, required=False,
+                      help='How many rows to send in each DLP API call.',
+                      default=1)
