@@ -43,7 +43,7 @@ def main():
 
   errors = run_pipeline_lib.run_pipeline(
       args.mae_input_pattern, args.mae_golden_dir, args.results_dir,
-      args.output_per_note_stats, args.types_to_ignore, args.project,
+      args.output_per_note_stats, args.types_to_ignore or [], args.project,
       pipeline_args)
 
   if errors:
