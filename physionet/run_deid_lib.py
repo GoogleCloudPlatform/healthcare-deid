@@ -21,7 +21,7 @@ pip install --upgrade google-api-python-client
 pip install --upgrade google-cloud-storage
 """
 
-import os
+import posixpath
 
 from common import run_docker
 
@@ -32,14 +32,14 @@ def run_deid(input_filename, output_directory, config_file, project_id,
              log_directory, dict_directory, lists_directory, service_account,
              include_original_in_output, credentials, exceptions):
   """Calls Google APIs to run DeID on Docker and waits for the response."""
-  output_filename = os.path.join(output_directory,
-                                 os.path.basename(input_filename))
+  output_filename = posixpath.join(output_directory,
+                                   posixpath.basename(input_filename))
 
   cmds = []
   if dict_directory:
-    cmds.append('gsutil -m cp %s dict/' % os.path.join(dict_directory, '*'))
+    cmds.append('gsutil -m cp %s dict/' % posixpath.join(dict_directory, '*'))
   if lists_directory:
-    cmds.append('gsutil -m cp %s lists/' % os.path.join(lists_directory, '*'))
+    cmds.append('gsutil -m cp %s lists/' % posixpath.join(lists_directory, '*'))
   cmds.append('perl deid.pl input deid.config')
 
   inputs = [('config', config_file, 'deid.config'),

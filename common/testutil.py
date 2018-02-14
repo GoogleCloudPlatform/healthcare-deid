@@ -16,7 +16,7 @@
 
 from __future__ import absolute_import
 
-import os
+import posixpath
 
 _fake_gcs = {}
 
@@ -56,7 +56,7 @@ def get_gcs_file(filename):
 class _FakeBlob(object):
 
   def __init__(self, bucket_name, file_name):
-    self._file_name = os.path.join(bucket_name, file_name)
+    self._file_name = posixpath.join(bucket_name, file_name)
     self.name = file_name
 
   def upload_from_string(self, contents):
@@ -78,14 +78,14 @@ class _FakeBucket(object):
   def list_blobs(self, prefix):
     blobs = []
     for name in _fake_gcs:
-      full_prefix = os.path.join(self._bucket_name, prefix)
+      full_prefix = posixpath.join(self._bucket_name, prefix)
       if name.startswith(full_prefix):
         blob_name = name[len(self._bucket_name)+1:]
         blobs.append(_FakeBlob(self._bucket_name, blob_name))
     return blobs
 
   def get_blob(self, name):
-    if os.path.join(self._bucket_name, name) not in _fake_gcs:
+    if posixpath.join(self._bucket_name, name) not in _fake_gcs:
       raise Exception('blob {0} not found in bucket {1}',
                       name, self._bucket_name)
     return _FakeBlob(self._bucket_name, name)

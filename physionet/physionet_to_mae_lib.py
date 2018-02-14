@@ -21,7 +21,7 @@ pip install --upgrade apache_beam
 from __future__ import absolute_import
 
 import logging
-import os
+import posixpath
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
@@ -39,7 +39,7 @@ def write_mae(mae_result, project, mae_dir):
       mae_result.patient_id, mae_result.record_number)
   gcs_name = gcsutil.GcsFileName.from_path(mae_dir)
   bucket = storage_client.get_bucket(gcs_name.bucket)
-  blob = bucket.blob(os.path.join(gcs_name.blob, filename))
+  blob = bucket.blob(posixpath.join(gcs_name.blob, filename))
   blob.upload_from_string(mae_result.mae_xml)
 
 

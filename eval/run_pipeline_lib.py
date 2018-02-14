@@ -20,7 +20,7 @@ import collections
 import itertools
 import logging
 import math
-import os
+import posixpath
 import xml.etree.ElementTree as XmlTree
 
 import apache_beam as beam
@@ -225,11 +225,11 @@ def compare(filename, golden_dir, types_to_ignore, project):
   """
   storage_client = storage.Client(project)
   golden_file = gcsutil.GcsFileName.from_path(
-      os.path.join(golden_dir, os.path.basename(filename.blob)))
+      posixpath.join(golden_dir, posixpath.basename(filename.blob)))
 
   findings = _get_findings(filename, storage_client, types_to_ignore)
   golden_findings = _get_findings(golden_file, storage_client, types_to_ignore)
-  record_id = os.path.basename(filename.blob)
+  record_id = posixpath.basename(filename.blob)
   if record_id.endswith('.xml'):
     record_id = record_id[:-4]
   logging.info('Running comparison for record "%s"', record_id)
@@ -405,7 +405,7 @@ def write_aggregate_results(results, results_dir, project):
   logging.info('Aggregate results:\n%s', results)
 
   filename = gcsutil.GcsFileName.from_path(
-      os.path.join(results_dir, 'aggregate_results.txt'))
+      posixpath.join(results_dir, 'aggregate_results.txt'))
   logging.info('Writing aggregate results to %s', filename.string())
   bucket = storage_client.lookup_bucket(filename.bucket)
   blob = bucket.blob(filename.blob)
@@ -428,7 +428,7 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
   filenames = []
   storage_client = storage.Client(project)
   for f in gcsutil.find_files(mae_input_pattern, storage_client):
-    if os.path.dirname(f.string()) != os.path.dirname(mae_input_pattern):
+    if posixpath.dirname(f.string()) != posixpath.dirname(mae_input_pattern):
       # Ignore subdirectories.
       continue
     filenames.append(f)
@@ -446,7 +446,7 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
   if output_per_note_stats:
     _ = (per_note_results |
          beam.Map(get_binary_token_result) |
-         beam.io.WriteToText(os.path.join(results_dir, 'per-note-results')))
+         beam.io.WriteToText(posixpath.join(results_dir, 'per-note-results')))
 
   result = p.run().wait_until_finish()
 

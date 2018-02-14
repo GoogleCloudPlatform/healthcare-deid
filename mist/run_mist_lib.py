@@ -21,7 +21,7 @@ pip install --upgrade google-api-python-client
 pip install --upgrade apache_beam
 """
 
-import os
+import posixpath
 
 from common import run_docker
 
@@ -47,7 +47,8 @@ def run_deid(input_filename, output_directory, model_filename, project_id,
   inputs = [('input file', input_filename, 'input.txt'),
             ('model file', model_filename, 'model')]
   outputs = [('output file', 'output.txt',
-              os.path.join(output_directory, os.path.basename(input_filename)))]
+              posixpath.join(output_directory,
+                             posixpath.basename(input_filename)))]
   run_docker.run_docker(cmds, project_id, log_directory, DOCKER_IMAGE_NAME,
                         inputs, outputs, service_account, credentials,
                         exceptions)

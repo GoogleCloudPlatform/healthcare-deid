@@ -28,7 +28,7 @@ import copy
 import itertools
 import json
 import logging
-import os
+import posixpath
 import time
 import uuid
 
@@ -358,7 +358,7 @@ def write_mae(mae_result, storage_client_fn, project, mae_dir):
       mae_result.patient_id, mae_result.record_number)
   bucket_name, blob_dir = split_gcs_name(mae_dir)
   bucket = storage_client.get_bucket(bucket_name)
-  blob = bucket.blob(os.path.join(blob_dir, filename))
+  blob = bucket.blob(posixpath.join(blob_dir, filename))
   blob.upload_from_string(mae_result.mae_xml)
 
 
@@ -369,7 +369,7 @@ def write_dtd(storage_client_fn, project, mae_dir, mae_tag_categories,
   dtd_contents = mae.generate_dtd(mae_tag_categories, task_name)
   bucket_name, blob_dir = split_gcs_name(mae_dir)
   bucket = storage_client.get_bucket(bucket_name)
-  blob = bucket.blob(os.path.join(blob_dir, 'classification.dtd'))
+  blob = bucket.blob(posixpath.join(blob_dir, 'classification.dtd'))
   blob.upload_from_string(dtd_contents)
 
 
