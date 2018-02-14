@@ -254,11 +254,12 @@ def _rebatch_inspect(
                   dlp_api_name)
   # Merge ret_b into ret_a and adjust the row indexes up accordingly.
   for retval in ret_b:
-    for finding in retval['result']['findings']:
-      index = 0
-      if 'rowIndex' in finding['location']['tableLocation']:
-        index = int(finding['location']['tableLocation']['rowIndex'])
-      finding['location']['tableLocation']['rowIndex'] = index + half_size
+    if 'findings' in retval['result']:
+      for finding in retval['result']['findings']:
+        index = 0
+        if 'rowIndex' in finding['location']['tableLocation']:
+          index = int(finding['location']['tableLocation']['rowIndex'])
+        finding['location']['tableLocation']['rowIndex'] = index + half_size
     ret_a.append(retval)
   return ret_a
 
@@ -326,12 +327,13 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
     for col in pass_through_columns:
       ret[col['name']] = row[col['name']]
     retvals.append(ret)
-  for finding in response['result']['findings']:
-    if not finding['location']['tableLocation']:
-      retvals[0]['result']['findings'].append(finding)
-    else:
-      index = int(finding['location']['tableLocation']['rowIndex'])
-      retvals[index]['result']['findings'].append(finding)
+  if 'findings' in response['result']:
+    for finding in response['result']['findings']:
+      if not finding['location']['tableLocation']:
+        retvals[0]['result']['findings'].append(finding)
+      else:
+        index = int(finding['location']['tableLocation']['rowIndex'])
+        retvals[index]['result']['findings'].append(finding)
 
   return retvals
 
