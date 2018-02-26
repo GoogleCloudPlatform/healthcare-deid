@@ -103,6 +103,16 @@ positives, and false negatives, then calculating overall precision and recall.
 Macro-averages are calculated by taking the mean of the precision and recall
 scores for all the individual results.
 
+### Binary Token Matching
+
+For Binary Token Matching we break up all the findings into whitespace-separated
+tokens, and we evaluate as if those were all individual findings that are not
+labeled with a type. To accomadate situations where tokenization may be done
+differently by different systems (around punctuation, generally), we count a
+match if two labels have any overlap. e.g. if the goldens have "T." "J." "Smith"
+and the DLP API got "T" "J" "Smith", this still counts as 3 matches (true
+positives).
+
 ### Strict Entity Matching
 
 For strict entity matching, a finding must have an exact match of both category
@@ -110,7 +120,22 @@ and range to be a true positive; otherwise it is a false positive. Any finding
 in the golden that does not have an exact match (category and range) is a false
 negative.
 
-### Output Format
+### BigQuery Output
+
+If --results_table is specified, the micro-averaged binary token matching
+results will be written to BigQuery for each infoType, as well as the overall
+aggregated values (infoType 'ALL').
+
+If --per_type_results_table is specified, the overall binary token matching
+results for each note will be written to that table in BigQuery.
+
+The schemas for these tables are detailed in run_pipeline_lib.py, but
+essentially the columns are:
+* All the fields in the Stats protocol buffer defined in eval/results.proto.
+* For results_table, the infoType the stats apply to.
+* For per_type_results_table, the record_id the stats apply to.
+
+### GCS Output Format
 
 The output format is the Results protocol buffer defined in eval/results.proto.
 It contains the metrics discussed above, and may have error_message filled in if

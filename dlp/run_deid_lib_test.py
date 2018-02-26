@@ -16,13 +16,13 @@
 
 from __future__ import absolute_import
 
-import collections
 import json
 import os
 import unittest
 
 from apache_beam.io import iobase
 from apiclient import errors
+from common import beam_testutil
 from common import testutil
 from dlp import run_deid_lib
 import httplib2
@@ -31,7 +31,6 @@ from mock import Mock
 from mock import patch
 
 TESTDATA_DIR = 'dlp/'
-fake_db = collections.defaultdict(list)
 
 
 class FakeSource(iobase.BoundedSource):
@@ -45,34 +44,6 @@ class FakeSource(iobase.BoundedSource):
   def read(self, unused_range_tracker):
     for record in self._records:
       yield record
-
-
-class FakeWriter(iobase.Writer):
-
-  def __init__(self, table_name):
-    self._table_name = table_name
-    fake_db.clear()
-
-  def write(self, value):
-    fake_db[self._table_name].append(value)
-
-  def close(self):
-    pass
-
-
-class FakeSink(iobase.Sink):
-
-  def __init__(self, table_name):
-    self._writer = FakeWriter(table_name)
-
-  def initialize_write(self):
-    pass
-
-  def open_writer(self, unused_init_result, unused_uid):
-    return self._writer
-
-  def finalize_write(self, unused_init_result, unused_writer_results):
-    pass
 
 
 class ResultStorage(object):
@@ -149,7 +120,7 @@ class RunDeidLibTest(unittest.TestCase):
   @patch('apache_beam.io.BigQuerySource')
   def testE2E(self, mock_bq_source_fn, mock_bq_sink_fn, mock_build_fn):
     def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
-      return FakeSink(table_name)
+      return beam_testutil.FakeSink(table_name)
     mock_bq_sink_fn.side_effect = make_sink
 
     mock_bq_source_fn.return_value = FakeSource()
@@ -217,10 +188,10 @@ class RunDeidLibTest(unittest.TestCase):
           contents)
 
     self.assertEqual(
-        fake_db['deid_tbl'],
+        beam_testutil.get_table('deid_tbl'),
         [{'patient_id': '111', 'record_number': '1', 'note': 'deid_resp_val'}])
     self.assertEqual(
-        fake_db['findings_tbl'],
+        beam_testutil.get_table('findings_tbl'),
         [{'patient_id': '111', 'record_number': '1',
           'findings': str(findings)}])
 
@@ -230,7 +201,7 @@ class RunDeidLibTest(unittest.TestCase):
   def testMultiColumnDeid(self, mock_bq_source_fn, mock_bq_sink_fn,
                           mock_build_fn):
     def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
-      return FakeSink(table_name)
+      return beam_testutil.FakeSink(table_name)
     mock_bq_sink_fn.side_effect = make_sink
 
     mock_bq_source_fn.return_value = FakeSource()
@@ -292,7 +263,7 @@ class RunDeidLibTest(unittest.TestCase):
     self.assertEqual(ordered(request_body), ordered(kwargs['body']))
 
     self.assertEqual(
-        fake_db['deid_tbl'],
+        beam_testutil.get_table('deid_tbl'),
         [{'patient_id': '111', 'record_number': '1', 'note': 'deidtext',
           'last_name': 'myname'}])
 
@@ -303,7 +274,7 @@ class RunDeidLibTest(unittest.TestCase):
   @patch('apache_beam.io.BigQuerySource')
   def testBatchDeid(self, mock_bq_source_fn, mock_bq_sink_fn, mock_build_fn):
     def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
-      return FakeSink(table_name)
+      return beam_testutil.FakeSink(table_name)
     mock_bq_sink_fn.side_effect = make_sink
 
     mock_bq_source_fn.return_value = FakeSource()
@@ -364,7 +335,7 @@ class RunDeidLibTest(unittest.TestCase):
     self.maxDiff = 10000
     self.assertEqual(ordered(expected_request_body), ordered(kwargs['body']))
 
-    self.assertEqual(fake_db['deid_tbl'], EXPECTED_DEID_RESULT)
+    self.assertEqual(beam_testutil.get_table('deid_tbl'), EXPECTED_DEID_RESULT)
     self.assertEqual(EXPECTED_MAE1,
                      testutil.get_gcs_file('mae-bucket/mae-dir/111-1.xml'))
     self.assertEqual(EXPECTED_MAE2,
@@ -379,7 +350,7 @@ class RunDeidLibTest(unittest.TestCase):
   @patch('apache_beam.io.BigQuerySource')
   def testReBatchDeid(self, mock_bq_source_fn, mock_bq_sink_fn, mock_build_fn):
     def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
-      return FakeSink(table_name)
+      return beam_testutil.FakeSink(table_name)
     mock_bq_sink_fn.side_effect = make_sink
 
     mock_bq_source_fn.return_value = FakeSource()
@@ -460,7 +431,7 @@ class RunDeidLibTest(unittest.TestCase):
     self.maxDiff = 10000
     self.assertEqual(ordered(expected_request_body), ordered(kwargs['body']))
 
-    self.assertEqual(fake_db['deid_tbl'], EXPECTED_DEID_RESULT)
+    self.assertEqual(beam_testutil.get_table('deid_tbl'), EXPECTED_DEID_RESULT)
     self.assertEqual(EXPECTED_MAE1,
                      testutil.get_gcs_file('mae-bucket/mae-dir/111-1.xml'))
     self.assertEqual(EXPECTED_MAE2,

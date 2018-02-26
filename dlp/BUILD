@@ -54,6 +54,7 @@ py_test(
     ],
     deps = [
         ":run_deid",
+        "//common:beam_testutil",
         "//common:testutil",
         requirement("apache_beam"),
     ],

@@ -43,6 +43,13 @@ xml_template = """<?xml version="1.0" encoding="UTF-8" ?>
 tag_template = '<{0} id="{0}0" spans="{1}~{2}" />'
 
 
+def normalize_dict_floats(d):
+  for k, v in d.iteritems():
+    if isinstance(v, float):
+      d[k] = round(v, 6)
+  return d
+
+
 def normalize_floats(pb):
   for desc, values in pb.ListFields():
     is_repeated = True
@@ -83,8 +90,16 @@ def normalize_floats(pb):
 
 class RunPipelineLibTest(unittest.TestCase):
 
+  @patch('eval.run_pipeline_lib._get_utcnow')
+  @patch('apache_beam.io.BigQuerySink')
   @patch('google.cloud.storage.Client')
-  def testE2E(self, fake_client_fn):
+  def testE2E(self, fake_client_fn, mock_bq_sink_fn, mock_utcnow_fn):
+    def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
+      return beam_testutil.FakeSink(table_name)
+    mock_bq_sink_fn.side_effect = make_sink
+    now = 'current time'
+    mock_utcnow_fn.return_value = now
+
     input_pattern = 'gs://bucketname/input/*'
     golden_dir = 'gs://bucketname/goldens'
     results_dir = 'gs://bucketname/results'
@@ -125,10 +140,60 @@ class RunPipelineLibTest(unittest.TestCase):
     beam.io.WriteToText = beam_testutil.DummyWriteTransform
     types_to_ignore = ['ignore']
     run_pipeline_lib.run_pipeline(input_pattern, golden_dir, results_dir, True,
-                                  types_to_ignore, 'project',
-                                  pipeline_args=None)
+                                  'results_table', 'per_note_results_table',
+                                  'debug_output_table', types_to_ignore,
+                                  'project', pipeline_args=None)
     beam.io.WriteToText = self.old_write_to_text
 
+    # Check we wrote the correct results to BigQuery.
+    expected_results = [
+        {'info_type': 'ALL', 'recall': 0.7777777777777778, 'precision': 0.875,
+         'f_score': 0.823529411764706, 'true_positives': 7,
+         'false_positives': 1, 'false_negatives': 2},
+        {'info_type': u'TypeA', 'recall': 0.7142857142857143,
+         'precision': 0.8333333333333334, 'f_score': 0.7692307692307694,
+         'true_positives': 5, 'false_positives': 1, 'false_negatives': 2},
+        {'info_type': u'TypeB', 'recall': 1.0, 'precision': 1.0, 'f_score': 1.0,
+         'true_positives': 1, 'false_positives': 0, 'false_negatives': 0},
+        {'info_type': u'TypeY', 'recall': 1.0, 'precision': 1.0, 'f_score': 1.0,
+         'true_positives': 1, 'false_positives': 0, 'false_negatives': 0}]
+    for r in expected_results:
+      r.update({'timestamp': now})
+    actual_results = sorted(beam_testutil.get_table('results_table'),
+                            key=lambda x: x['info_type'])
+    self.assertEqual([normalize_dict_floats(r) for r in expected_results],
+                     [normalize_dict_floats(r) for r in actual_results])
+
+    expected_debug_info = [
+        {'record_id': '1-1', 'error_type': 'false_negative', 'text': 'wrd4',
+         'info_type': 'TypeA', 'context':
+         'word1   w2 w3  {[--wrd4--]} 5 word6   word7 multi token entity w8'},
+        {'record_id': '1-1', 'error_type': 'false_negative', 'text': 'w3',
+         'info_type': 'TypeA', 'context':
+         'word1   w2 {[--w3--]}  wrd4 5 word6   word7 multi token entity w8'},
+        {'record_id': '1-1', 'error_type': 'false_positive', 'text': 'w2',
+         'info_type': 'TypeA', 'context':
+         'word1   {[--w2--]} w3  wrd4 5 word6   word7 multi token entity w8'}]
+    for r in expected_debug_info:
+      r.update({'timestamp': now})
+    self.assertEqual(expected_debug_info,
+                     sorted(beam_testutil.get_table('debug_output_table'),
+                            key=lambda x: x['context']))
+
+    expected_per_note = [
+        {'record_id': '1-1', 'precision': 0.5, 'recall': 0.3333333333333333,
+         'f_score': 0.4, 'true_positives': 1, 'false_positives': 1,
+         'false_negatives': 2},
+        {'record_id': '1-2', 'precision': 1.0, 'recall': 1.0, 'f_score': 1.0,
+         'true_positives': 6, 'false_positives': 0, 'false_negatives': 0}]
+    for r in expected_per_note:
+      r.update({'timestamp': now})
+    actual_results = sorted(beam_testutil.get_table('per_note_results_table'),
+                            key=lambda x: x['record_id'])
+    self.assertEqual([normalize_dict_floats(r) for r in expected_per_note],
+                     [normalize_dict_floats(r) for r in actual_results])
+
+    # Check we wrote the correct results to GCS.
     expected_text = ''
     with open(os.path.join(TESTDATA_DIR, 'expected_results')) as f:
       expected_text = f.read()
@@ -221,9 +286,10 @@ stats {
 
   def testTokenizeSet(self):
     finding = run_pipeline_lib.Finding
-    findings = [finding('TYPE_A', 0, 2, 'hi'),
-                finding('TYPE_B', 4, 14, 'two tokens'),
-                finding('TYPE_C', 20, 38, 'three\tmore  tokens'),
+    full_text = 'hi: two tokens and: three\tmore  tokens'
+    findings = [finding('TYPE_A', 0, 2, 'hi', 0, full_text),
+                finding('TYPE_B', 4, 14, 'two tokens', 0, full_text),
+                finding('TYPE_C', 20, 38, 'three\tmore  tokens', 0, full_text),
                 # 'tokens' is a duplicate, so it's not added to the results.
                 finding('TYPE_D', 32, 46, 'tokens overlap')]
     tokenized = run_pipeline_lib.tokenize_set(findings)
@@ -236,6 +302,17 @@ stats {
                               finding('TYPE_D', 39, 46, 'overlap')])
     self.assertEqual(expected_tokenized, tokenized)
 
+  def testContext(self):
+    full_text = 'small sample text sentence'
+    f = run_pipeline_lib.Finding.from_tag('TYPE_A', '6~17', full_text)
+    self.assertEqual('small {[--sample text--]} sentence', f.context())
+
+    findings = sorted(run_pipeline_lib.tokenize_finding(f), key=str)
+    self.assertEqual('small {[--sample--]} text sentence',
+                     findings[1].context())
+    self.assertEqual('small sample {[--text--]} sentence',
+                     findings[0].context())
+
   def testLooseMatching(self):
     finding = run_pipeline_lib.Finding
     findings = set([finding('TYPE_A', 0, 3, 'one'),
@@ -244,8 +321,8 @@ stats {
     golden_findings = set([finding('TYPE_A', 0, 3, 'hit'),
                            finding('TYPE_B', 7, 10, 'hit'),
                            finding('TYPE_C', 25, 29, 'miss')])
-    result = run_pipeline_lib.count_matches(findings, golden_findings,
-                                            record_id='', strict=False)
+    result = run_pipeline_lib.count_matches(
+        findings, golden_findings, record_id='', strict=False)
 
     expected_stats = results_pb2.Stats()
     expected_stats.true_positives = 2

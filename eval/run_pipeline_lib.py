@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 
 import collections
+from datetime import datetime
 import itertools
 import logging
 import math
@@ -29,18 +30,27 @@ from common import gcsutil
 from eval import results_pb2
 from google.cloud import storage
 
+from google.protobuf import text_format
+
+
+def _get_utcnow():
+  return datetime.utcnow()
+
 
 class Finding(object):
   """Class to hold category, span, and text of a PHI finding."""
 
-  def __init__(self, category, start, end, text):
+  def __init__(self, category, start, end, text, context_start=0, context=''):
     self.category = category
     self.start = start
     self.end = end
     self.text = text
+    self.context_start = context_start
+    self.raw_context = context
 
   @classmethod
   def from_tag(cls, category, spans, full_text):
+    """Initialize a Finding from MAE tag data (plus the full text)."""
     startstr, endstr = spans.split('~')
     start = int(startstr)
     end = int(endstr)
@@ -49,7 +59,13 @@ class Finding(object):
     if end > len(full_text):
       raise Exception('Span "{}" out of range (0-{}).'.format(
           spans, len(full_text)))
-    return cls(category, start, end, full_text[start:end])
+    # Store up to 100 characters of context on either side of the token.
+    context_start = max(0, start-100)
+    token_len = end - start
+    context_end = context_start + 200 + token_len
+    context = full_text[context_start:context_end]
+    return cls(category, start, end, full_text[start:end], context_start,
+               context)
 
   def intersects(self, findings):
     """Return True if self overlaps with any of the given list of Findings."""
@@ -59,6 +75,14 @@ class Finding(object):
         return True
     return False
 
+  def context(self):
+    """Return the context with the token made more visible."""
+    relative_start = self.start - self.context_start
+    context_first_half = self.raw_context[:relative_start]
+    context_second_half = self.raw_context[relative_start+len(self.text):]
+    return (context_first_half + '{[--' + self.text + '--]}' +
+            context_second_half)
+
   def __hash__(self):
     return hash((self.category, self.start, self.end))
 
@@ -67,8 +91,8 @@ class Finding(object):
             self.end == other.end)
 
   def __repr__(self):
-    return '{}: {}~{} "{}"'.format(
-        self.category, self.start, self.end, self.text)
+    return '{}: {}~{} "{}" ({})'.format(
+        self.category, self.start, self.end, self.text, self.context())
 
 
 def _get_findings(filename, storage_client, types_to_ignore):
@@ -143,7 +167,8 @@ def tokenize_finding(finding):
     start = finding.text.find(token, cursor)
     cursor = end = start + len(token)
     tokenized.add(Finding(
-        finding.category, start + finding.start, end + finding.start, token))
+        finding.category, start + finding.start, end + finding.start, token,
+        finding.context_start, finding.raw_context))
   return tokenized
 
 
@@ -166,12 +191,34 @@ def tokenize_set(findings):
   return all_tokenized
 
 
+def deserialize_individual_result(record_id, serialized_stats,
+                                  per_type_serialized_stats):
+  ir = IndividualResult()
+  ir.record_id = record_id
+  ir.stats.ParseFromString(serialized_stats)
+  for type_name, stats in per_type_serialized_stats.iteritems():
+    ir.per_type[type_name].ParseFromString(stats)
+
+  return ir
+
+
 class IndividualResult(object):
 
   def __init__(self):
     self.record_id = ''
     self.stats = results_pb2.Stats()
     self.per_type = collections.defaultdict(results_pb2.Stats)
+    self.debug_info = []
+
+  # Dataflow's pickling gets confused if it has to deal with raw protos, so we
+  # serialize them here.
+  def __reduce__(self):
+    per_type_serialized = {}
+    for type_name, stats in self.per_type.iteritems():
+      per_type_serialized[type_name] = stats.SerializeToString()
+    return (deserialize_individual_result,
+            (self.record_id, self.stats.SerializeToString(),
+             per_type_serialized))
 
 
 def count_matches(findings, golden_findings, record_id, strict):
@@ -194,6 +241,10 @@ def count_matches(findings, golden_findings, record_id, strict):
     if ((strict and finding not in golden_findings) or
         (not strict and not finding.intersects(golden_findings))):
       result.stats.false_positives += 1
+      result.debug_info.append(
+          {'record_id': record_id, 'error_type': 'false_positive',
+           'text': finding.text, 'context': finding.context(),
+           'info_type': finding.category})
       result.per_type[finding.category].false_positives += 1
 
   for golden_finding in golden_findings:
@@ -202,6 +253,10 @@ def count_matches(findings, golden_findings, record_id, strict):
       result.stats.true_positives += 1
       result.per_type[golden_finding.category].true_positives += 1
     else:
+      result.debug_info.append(
+          {'record_id': record_id, 'error_type': 'false_negative',
+           'text': golden_finding.text, 'context': golden_finding.context(),
+           'info_type': golden_finding.category})
       result.per_type[golden_finding.category].false_negatives += 1
       result.stats.false_negatives += 1
 
@@ -270,6 +325,17 @@ class _MacroStats(object):
     return stats
 
 
+def deserialize_accumulated_results(serialized_micro_stats, macro,
+                                    per_type_serialized_stats):
+  ar = AccumulatedResults()
+  ar.micro.ParseFromString(serialized_micro_stats)
+  ar.macro = macro
+  for type_name, stats in per_type_serialized_stats.iteritems():
+    ar.per_type[type_name].ParseFromString(stats)
+
+  return ar
+
+
 class AccumulatedResults(object):
   """Accumulates micro and macro averages."""
 
@@ -278,6 +344,15 @@ class AccumulatedResults(object):
     self.macro = _MacroStats()
     # Map from info type name to Stats pb.
     self.per_type = collections.defaultdict(results_pb2.Stats)
+
+  # Dataflow's pickling gets confused if it has to deal with raw protos, so we
+  # serialize them here.
+  def __reduce__(self):
+    per_type_serialized = {}
+    for type_name, stats in self.per_type.iteritems():
+      per_type_serialized[type_name] = stats.SerializeToString()
+    return (deserialize_accumulated_results,
+            (self.micro.SerializeToString(), self.macro, per_type_serialized))
 
   def add_result(self, result):
     """Add an individual result to the AccumulatedResults.
@@ -395,12 +470,17 @@ class CombineResultsFn(beam.CombineFn):
   def extract_output(self, overall_results):
     if overall_results is None:
       return None
-    return overall_results.to_results_proto()
+
+    # Dataflow's pickling gets confused if it has to deal with raw protos, so we
+    # serialize them explicitly.
+    return overall_results.to_results_proto().SerializeToString()
 
 
-def write_aggregate_results(results, results_dir, project):
+def write_aggregate_results_to_gcs(results_bytes, results_dir, project):
   """Write the aggregate results to results_dir."""
   storage_client = storage.Client(project)
+  results = results_pb2.Results()
+  results.ParseFromString(results_bytes)
 
   logging.info('Aggregate results:\n%s', results)
 
@@ -412,17 +492,71 @@ def write_aggregate_results(results, results_dir, project):
   blob.upload_from_string(str(results))
 
 
+def _create_row(stats, now, extra_columns=tuple()):
+  """Create a BigQuery row from the given stats."""
+  row = {'true_positives': stats.true_positives,
+         'false_positives': stats.false_positives,
+         'false_negatives': stats.false_negatives}
+  if not math.isnan(stats.precision):
+    row['precision'] = stats.precision
+  if not math.isnan(stats.recall):
+    row['recall'] = stats.recall
+  if not math.isnan(stats.f_score):
+    row['f_score'] = stats.f_score
+
+  row['timestamp'] = now
+
+  for column_name, val in extra_columns:
+    row[column_name] = val
+
+  return row
+
+
+def format_individual_result_for_bq(result, now):
+  _, binary_token_result = result
+  return _create_row(binary_token_result.stats, now,
+                     [('record_id', binary_token_result.record_id)])
+
+
+def format_aggregate_results_for_bq(aggregate_results_bytes, now):
+  """Format results as a BigQuery row (dict from column name to value)."""
+  ret = []
+  aggregate_results = results_pb2.Results()
+  aggregate_results.ParseFromString(aggregate_results_bytes)
+  binary_token_results = aggregate_results.binary_token_matching_results
+  ret.append(_create_row(binary_token_results.micro_average_results, now,
+                         [('info_type', 'ALL')]))
+  for result in binary_token_results.per_type_micro_average_results:
+    ret.append(_create_row(result.stats, now,
+                           [('info_type', result.info_type_category)]))
+  return ret
+
+
+def format_debug_info(entity_and_binary_result_pair, now):
+  _, binary_token_result = entity_and_binary_result_pair
+  for debug_info in binary_token_result.debug_info:
+    debug_info['timestamp'] = now
+  return binary_token_result.debug_info
+
+
 def get_binary_token_result(entity_and_binary_result_pair):
   _, binary_token_result = entity_and_binary_result_pair
   pb = results_pb2.IndividualResult()
   pb.record_id = binary_token_result.record_id
   pb.stats.CopyFrom(binary_token_result.stats)
-  return pb
+  return text_format.MessageToString(pb)
+
+
+BASE_SCHEMA = (
+    'recall:FLOAT,precision:FLOAT,f_score:FLOAT,'
+    'true_positives:INTEGER,false_positives:INTEGER,false_negatives:INTEGER,'
+    'timestamp:TIMESTAMP')
 
 
 def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
-                 output_per_note_stats, types_to_ignore, project,
-                 pipeline_args):
+                 write_per_note_stats_to_gcs, results_table,
+                 per_note_results_table, debug_output_table, types_to_ignore,
+                 project, pipeline_args):
   """Evaluate the input files against the goldens."""
   logging.info('Starting evaluation.')
   filenames = []
@@ -439,11 +573,35 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
                       beam.Create(filenames) |
                       beam.Map(compare, mae_golden_dir, types_to_ignore,
                                project))
-  _ = (per_note_results |
-       beam.CombineGlobally(CombineResultsFn()) |
-       beam.Map(write_aggregate_results, results_dir, project))
+  now = str(_get_utcnow())
+  if debug_output_table:
+    _ = (per_note_results |
+         beam.FlatMap(format_debug_info, now) |
+         'write_debug_info' >> beam.io.Write(beam.io.BigQuerySink(
+             debug_output_table,
+             schema=('record_id:STRING,error_type:STRING,info_type:STRING,'
+                     'text:STRING,context:STRING,timestamp:TIMESTAMP'),
+             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
 
-  if output_per_note_stats:
+  if per_note_results_table:
+    _ = (per_note_results |
+         beam.Map(format_individual_result_for_bq, now) |
+         'write_per_note' >> beam.io.Write(beam.io.BigQuerySink(
+             per_note_results_table, schema=('record_id:STRING,' + BASE_SCHEMA),
+             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
+  aggregate_results = (per_note_results |
+                       beam.CombineGlobally(CombineResultsFn()))
+  if results_dir:
+    _ = (aggregate_results |
+         beam.Map(write_aggregate_results_to_gcs, results_dir, project))
+  if results_table:
+    _ = (aggregate_results |
+         beam.FlatMap(format_aggregate_results_for_bq, now) |
+         'write_aggregate' >> beam.io.Write(beam.io.BigQuerySink(
+             results_table, schema=('info_type:STRING,' + BASE_SCHEMA),
+             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
+
+  if write_per_note_stats_to_gcs:
     _ = (per_note_results |
          beam.Map(get_binary_token_result) |
          beam.io.WriteToText(posixpath.join(results_dir, 'per-note-results')))
@@ -463,12 +621,22 @@ def add_all_args(parser):
       '--mae_golden_dir', type=str, required=True,
       help=('GCS directory with "golden" MAE files to use as a baseline for '
             'comparison.'))
-  parser.add_argument('--results_dir', type=str, required=True,
-                      help='Directory to write results to.')
+  parser.add_argument('--results_dir', type=str,
+                      help='GCS directory to write results to.')
+  parser.add_argument('--write_per_note_stats_to_gcs', type=bool, default=False,
+                      help=('Also write per-note binary token matching '
+                            'results to GCS.'))
+  parser.add_argument('--results_table', type=str,
+                      help=('Bigquery table to write overall (micro-averaged) '
+                            'binary token matching results to.'))
+  parser.add_argument('--per_note_results_table', type=str,
+                      help=('Bigquery table to write per-note binary token '
+                            'matching results to.'))
   parser.add_argument('--project', type=str, required=True,
                       help='GCP project to run as.')
-  parser.add_argument('--output_per_note_stats', type=bool, default=False,
-                      help='Also write per-note binary token matching results.')
   parser.add_argument('--types_to_ignore', type=lambda s: s.split(','),
                       help=('Comma-separated list of types that should be '
                             'excluded from the analysis.'))
+  parser.add_argument('--debug_output_table', type=str,
+                      help=('Table for storing debug info (including PHI!) for '
+                            'binary token matching results.'))

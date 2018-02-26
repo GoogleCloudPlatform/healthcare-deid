@@ -16,9 +16,14 @@
 
 from __future__ import absolute_import
 
+import collections
+
 import apache_beam as beam
 from apache_beam.coders.coders import ToStringCoder
+from apache_beam.io import iobase
 from common import testutil
+
+_fake_bq_db = collections.defaultdict(list)
 
 
 class DummyWriteTransform(beam.PTransform):
@@ -51,3 +56,36 @@ class DummyWriteTransform(beam.PTransform):
   def expand(self, pcoll):
     return pcoll | 'DummyWriteForTesting' >> beam.ParDo(
         DummyWriteTransform.WriteDoFn(self.filename))
+
+
+class _FakeBqWriter(iobase.Writer):
+
+  def __init__(self, table_name):
+    self._table_name = table_name
+    _fake_bq_db[table_name] = []
+
+  def write(self, value):
+    _fake_bq_db[self._table_name].append(value)
+
+  def close(self):
+    pass
+
+
+class FakeSink(iobase.Sink):
+  """Fake BigQuery sink object."""
+
+  def __init__(self, table_name):
+    self._writer = _FakeBqWriter(table_name)
+
+  def initialize_write(self):
+    pass
+
+  def open_writer(self, unused_init_result, unused_uid):
+    return self._writer
+
+  def finalize_write(self, unused_init_result, unused_writer_results):
+    pass
+
+
+def get_table(table_name):
+  return _fake_bq_db[table_name]
