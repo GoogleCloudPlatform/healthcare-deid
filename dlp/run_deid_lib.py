@@ -207,7 +207,10 @@ def deid(rows, credentials, project, deid_config, inspect_config,
   req_body = {
       'deidentifyConfig': deid_config,
       'inspectConfig': inspect_config,
-      'item': _create_item(target_columns, rows)
+      # Include pass-through columns as target columns here so they can be used
+      # as the context field for a transformation. We will re-write the response
+      # so they contain the original data.
+      'item': _create_item(pass_through_columns + target_columns, rows)
   }
   parent = 'projects/{0}'.format(project)
   try:

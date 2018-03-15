@@ -33,10 +33,12 @@
        "infoType": {"name": "KnownLastName"}}]},
 
  "item": {"table": {
-   "headers": [{"name": "note"}, {"name": "last_name"}],
+   "headers": [{"name": "note"}, {"name": "last_name"},
+               {"name": "patient_id"}, {"name": "record_number"}],
    "rows": [{"values": [
      {"stringValue": "McBoatface"},
-     {"stringValue": "text and PID and MORE PID"}
+     {"stringValue": "text and PID and MORE PID"},
+     {"stringValue": "111"}, {"integerValue": "1"}
    ]}]
  }}
 }

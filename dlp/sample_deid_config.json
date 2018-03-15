@@ -4,6 +4,7 @@
       "transformations": [
         {
           "infoTypes": [
+            {"name": "AGE"},
             {"name": "AMERICAN_BANKERS_CUSIP_ID"},
             {"name": "AUSTRALIA_MEDICARE_NUMBER"},
             {"name": "AUSTRALIA_TAX_FILE_NUMBER"},
@@ -54,6 +55,23 @@
           "primitiveTransformation": {
             "replaceWithInfoTypeConfig": {}
           }
+        },
+        {
+          "infoTypes": [
+            {"name": "DATE"}
+          ],
+          "primitiveTransformation": {
+            "dateShiftConfig": {
+              "context": {
+                "name": "patient_id"
+              },
+              "upperBoundDays": 100,
+              "lowerBoundDays": -100,
+              "cryptoKey": {
+                "unwrapped": { "key": "123456789012345678901234567890ab" }
+              }
+            }
+          }
         }
       ]
     }
@@ -65,7 +83,7 @@
     },
     {
       "name": "AGE",
-      "infoTypes": []
+      "infoTypes": ["AGE"]
     },
     {
       "name": "ORGANIZATION",
@@ -120,7 +138,7 @@
     },
     {
       "name": "DATE",
-      "infoTypes": []
+      "infoTypes": ["DATE"]
     },
     {
       "name": "MEDICALRECORD",
