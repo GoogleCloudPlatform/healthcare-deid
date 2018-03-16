@@ -1,26 +1,22 @@
 {
-  "deidConfig": {
-    "infoTypeTransformations": {
-      "transformations": [
-        {
-          "infoTypes": [
-            {"name": "PERSON_NAME"},
-            {"name": "PHONE_NUMBER"},
-            {"name": "LOCATION"},
-            {"name": "DATE"},
-            {"name": "TIME"},
-            {"name": "AGE"},
-            {"name": "MEDICARE_NUMBER"},
-            {"name": "UNKNOWN_IDENTIFIER"},
-            {"name": "EMAIL_ADDRESS"}
-          ],
-          "primitiveTransformation": {
-            "replaceWithInfoTypeConfig": {}
-          }
-        }
-      ]
+  "transformations": [
+    {
+      "infoTypes": [
+        {"name": "PERSON_NAME"},
+        {"name": "PHONE_NUMBER"},
+        {"name": "LOCATION"},
+        {"name": "DATE"},
+        {"name": "TIME"},
+        {"name": "AGE"},
+        {"name": "MEDICARE_NUMBER"},
+        {"name": "UNKNOWN_IDENTIFIER"},
+        {"name": "EMAIL_ADDRESS"}
+      ],
+      "primitiveTransformation": {
+        "replaceWithInfoTypeConfig": {}
+      }
     }
-  },
+  ],
   "infoTypeCategories": [
     {
       "name": "NAME",

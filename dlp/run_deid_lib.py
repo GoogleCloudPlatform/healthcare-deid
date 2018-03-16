@@ -73,6 +73,16 @@ def _request_with_retry(fn, num_retries=5):
             'attempt %d failed with 403 or 429 error. retrying in %d sec...',
             attempt + 1, sleep_seconds)
         time.sleep(sleep_seconds)
+      elif (error.resp.status == 400 and error.resp.reason == 'Bad Request' and
+            'Invalid info_type' in str(error)):
+        raise Exception(
+            str(error) + '\nEnsure you are using the correct deid_config_file.')
+      elif (error.resp.status == 403 and error.resp.reason == 'Forbidden' and
+            'serviceusage.services.use' in str(error)):
+        raise Exception(
+            str(error) + '\nEnsure the service account specified in '
+            'GOOGLE_APPLICATION_CREDENTIALS has the '
+            'serviceusage.services.use permission.')
       elif error.resp.status in [500, 503]:
         sleep_seconds = 10+2**attempt
         # 500, 503 - Service error. Wait and retry.
@@ -148,12 +158,16 @@ def _per_row_inspect_config(inspect_config, per_row_types, rows):
 #     } ]
 #   }}
 def _create_item(target_columns, rows):
+  """Creates the 'item' field for a deid or inspect request."""
   table = {'headers': [], 'rows': []}
   for _ in rows:
     table['rows'].append({'values': []})
   for col in target_columns:
     table['headers'].append({'name': col['name']})
     for i in range(len(rows)):
+      if col['name'] not in rows[i]:
+        raise Exception('Expected column "{}" not found in row: "{}"'.format(
+            col['name'], rows[i]))
       table['rows'][i]['values'].append({col['type']: rows[i][col['name']]})
   return {'table': table}
 
@@ -388,13 +402,85 @@ def _is_custom_type(type_name, per_row_types, per_dataset_types):
   return False
 
 
+def _find_transformation(all_transformations, target_info_type):
+  for transformation in all_transformations:
+    for info_type in transformation['infoTypes']:
+      if info_type['name'] == target_info_type:
+        return transformation
+
+  raise Exception('No transformation specified for infoType %s' %
+                  target_info_type)
+
+
+def _get_transforms_for_types(all_transformations, info_types):
+  """Get the transformations that apply to the given types."""
+  included_types = set()
+  transforms = []
+  for info_type in info_types:
+    if info_type in included_types:
+      continue
+    transformation = copy.deepcopy(
+        _find_transformation(all_transformations, info_type))
+    # Remove all non-specified infoTypes from the transformation.
+    transformation['infoTypes'] = [
+        it for it in transformation['infoTypes'] if it['name'] in info_types]
+    transforms.append(transformation)
+    for info_type in transformation['infoTypes']:
+      included_types.add(info_type['name'])
+
+  return transforms
+
+
+def _generate_deid_config(all_transformations, target_columns):
+  """Generate the deidentifyConfig for the deidentify API calls.
+
+  The generated config contains a RecordTransformations.FieldTransformation
+  (https://goo.gl/e8DBmm#DeidentifyTemplate.FieldTransformation) for each column
+  in target_columns, where the transformation is the list of all the
+  transformations in all_transformations which match the infoTypes specified for
+  that column, or all the transformations if no infoTypes are specified.
+
+  Args:
+    all_transformations: The "transformations" list from the config file.
+    target_columns: The "columns.inspect" list from the config file.
+
+  Returns:
+    A DeidentifyConfig.
+  """
+  if not all_transformations:
+    return {}
+
+  field_transformations = []
+  fields_using_all_info_types = []
+  for col in target_columns:
+    if 'infoTypesToDeId' not in col:
+      fields_using_all_info_types.append(col['name'])
+      continue
+
+    info_type_transforms = []
+    info_type_transforms = _get_transforms_for_types(
+        all_transformations, col['infoTypesToDeId'])
+
+    field_transformations.append(
+        {'fields': [{'name': col['name']}],
+         'infoTypeTransformations': {'transformations': info_type_transforms}})
+
+  # All inspect columns that don't specify types are included together here and
+  # will use all the transformations listed in the config.
+  field_transformations.append(
+      {'fields': [{'name': f} for f in fields_using_all_info_types],
+       'infoTypeTransformations': {'transformations': all_transformations}})
+
+  return {'recordTransformations':
+          {'fieldTransformations': field_transformations}}
+
+
 def generate_configs(config_text, input_query=None, input_table=None,
                      bq_client=None, bq_config_fn=None):
   """Generate DLP API configs based on the input config file."""
   mae_tag_categories = {}
   per_row_types = []
   cfg = json.loads(config_text, object_pairs_hook=collections.OrderedDict)
-  deid_config = cfg['deidConfig'] if 'deidConfig' in cfg else {}
   if 'infoTypeCategories' in cfg:
     mae_tag_categories = cfg['infoTypeCategories']
   if 'perRowTypes' in cfg:
@@ -410,15 +496,15 @@ def generate_configs(config_text, input_query=None, input_table=None,
 
   # Generate an inspectConfig based on all the infoTypes listed in the deid
   # config's transformations.
+  transformations = cfg['transformations'] if 'transformations' in cfg else []
   info_types = set()
-  if deid_config:
-    for transform in deid_config['infoTypeTransformations']['transformations']:
-      for t in transform['infoTypes']:
-        # Don't include custom infoTypes in the inspect config or the DLP API
-        # will complain.
-        if _is_custom_type(t['name'], per_row_types, per_dataset_types):
-          continue
-        info_types.add(t['name'])
+  for transformation in transformations:
+    for t in transformation['infoTypes']:
+      # Don't include custom infoTypes in the inspect config or the DLP API
+      # will complain.
+      if _is_custom_type(t['name'], per_row_types, per_dataset_types):
+        continue
+      info_types.add(t['name'])
   inspect_config['infoTypes'] = [{'name': t} for t in info_types]
 
   pass_through_columns = [{'name': 'patient_id', 'type': 'stringValue'},
@@ -429,6 +515,8 @@ def generate_configs(config_text, input_query=None, input_table=None,
       pass_through_columns = cfg['columns']['passThrough']
     if 'inspect' in cfg['columns']:
       target_columns = cfg['columns']['inspect']
+
+  deid_config = _generate_deid_config(transformations, target_columns)
 
   return (inspect_config, deid_config, mae_tag_categories, per_row_types,
           pass_through_columns, target_columns)
@@ -701,7 +789,7 @@ def add_all_args(parser):
                       help='Task name to use in generated MAE files.',
                       default='InspectPhiTask')
   parser.add_argument('--deid_config_file', type=str, required=False,
-                      help='Path to a json file holding a DeidentifyConfig.')
+                      help='Path to a json file holding the config to use.')
   parser.add_argument('--project', type=str, required=True,
                       help='GCP project to run as.')
   parser.add_argument('--dlp_api_name', type=str, required=False,

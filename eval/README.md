@@ -33,13 +33,22 @@ export GOOGLE_APPLICATION_CREDENTIALS=~/${SERVICE_ACCOUNT?}.json
 
 ### Dependencies
 
+This tool uses the Apache Beam SDK for Python, which requires Python version
+2.7.x. Check that you have version 2.7.x by running:
+
+```shell
+python --version
+```
+
 Running the pipeline requires having the Google Python API client, Google Cloud
 Storage client, and Python Apache Beam client installed. Note that as of
 2017-10-27, there is an incompatibility with the latest version of the
 `six` library, which requires a downgrade to 1.10.0 to fix.
 
 ```shell
-sudo pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-storage six==1.10.0
+virtualenv env
+source env/bin/activate
+pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-storage six==1.10.0
 ```
 
 The code for the pipeline itself is available for download from GitHub:

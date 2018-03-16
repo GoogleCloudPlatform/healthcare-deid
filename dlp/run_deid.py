@@ -25,6 +25,7 @@ from __future__ import absolute_import
 
 import argparse
 import logging
+import os
 import sys
 
 from dlp import run_deid_lib
@@ -44,6 +45,10 @@ def main():
   # add it to pipeline_args as well.
   pipeline_args += ['--project', args.project]
 
+  var = 'GOOGLE_APPLICATION_CREDENTIALS'
+  if var not in os.environ or not os.environ[var]:
+    raise Exception('You must specify service account credentials in the '
+                    'GOOGLE_APPLICATION_CREDENTIALS environment variable.')
   credentials, _ = google.auth.default()
   bq_client = bigquery.Client(project=args.project)
   bq_config_fn = None

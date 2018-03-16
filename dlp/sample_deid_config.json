@@ -1,81 +1,77 @@
 {
-  "deidConfig": {
-    "infoTypeTransformations": {
-      "transformations": [
-        {
-          "infoTypes": [
-            {"name": "AGE"},
-            {"name": "AMERICAN_BANKERS_CUSIP_ID"},
-            {"name": "AUSTRALIA_MEDICARE_NUMBER"},
-            {"name": "AUSTRALIA_TAX_FILE_NUMBER"},
-            {"name": "BRAZIL_CPF_NUMBER"},
-            {"name": "CANADA_BC_PHN"},
-            {"name": "CANADA_OHIP"},
-            {"name": "CANADA_PASSPORT"},
-            {"name": "CANADA_QUEBEC_HIN"},
-            {"name": "CANADA_SOCIAL_INSURANCE_NUMBER"},
-            {"name": "CHINA_PASSPORT"},
-            {"name": "CREDIT_CARD_NUMBER"},
-            {"name": "EMAIL_ADDRESS"},
-            {"name": "FRANCE_CNI"},
-            {"name": "FRANCE_NIR"},
-            {"name": "FRANCE_PASSPORT"},
-            {"name": "GERMANY_PASSPORT"},
-            {"name": "IBAN_CODE"},
-            {"name": "INDIA_PAN_INDIVIDUAL"},
-            {"name": "IP_ADDRESS"},
-            {"name": "JAPAN_INDIVIDUAL_NUMBER"},
-            {"name": "JAPAN_PASSPORT"},
-            {"name": "KOREA_PASSPORT"},
-            {"name": "KOREA_RRN"},
-            {"name": "LOCATION"},
-            {"name": "MAC_ADDRESS"},
-            {"name": "MAC_ADDRESS_LOCAL"},
-            {"name": "MEXICO_CURP_NUMBER"},
-            {"name": "MEXICO_PASSPORT"},
-            {"name": "NETHERLANDS_BSN_NUMBER"},
-            {"name": "PERSON_NAME"},
-            {"name": "PHONE_NUMBER"},
-            {"name": "SPAIN_NIE_NUMBER"},
-            {"name": "SPAIN_NIF_NUMBER"},
-            {"name": "SPAIN_PASSPORT"},
-            {"name": "SWIFT_CODE"},
-            {"name": "UK_DRIVERS_LICENSE_NUMBER"},
-            {"name": "UK_NATIONAL_HEALTH_SERVICE_NUMBER"},
-            {"name": "UK_NATIONAL_INSURANCE_NUMBER"},
-            {"name": "UK_PASSPORT"},
-            {"name": "UK_TAXPAYER_REFERENCE"},
-            {"name": "US_DRIVERS_LICENSE_NUMBER"},
-            {"name": "US_EMPLOYER_IDENTIFICATION_NUMBER"},
-            {"name": "US_HEALTHCARE_NPI"},
-            {"name": "US_PASSPORT"},
-            {"name": "US_SOCIAL_SECURITY_NUMBER"},
-            {"name": "US_VEHICLE_IDENTIFICATION_NUMBER"}
-          ],
-          "primitiveTransformation": {
-            "replaceWithInfoTypeConfig": {}
-          }
-        },
-        {
-          "infoTypes": [
-            {"name": "DATE"}
-          ],
-          "primitiveTransformation": {
-            "dateShiftConfig": {
-              "context": {
-                "name": "patient_id"
-              },
-              "upperBoundDays": 100,
-              "lowerBoundDays": -100,
-              "cryptoKey": {
-                "unwrapped": { "key": "123456789012345678901234567890ab" }
-              }
-            }
+  "transformations": [
+    {
+      "infoTypes": [
+        {"name": "AGE"},
+        {"name": "AMERICAN_BANKERS_CUSIP_ID"},
+        {"name": "AUSTRALIA_MEDICARE_NUMBER"},
+        {"name": "AUSTRALIA_TAX_FILE_NUMBER"},
+        {"name": "BRAZIL_CPF_NUMBER"},
+        {"name": "CANADA_BC_PHN"},
+        {"name": "CANADA_OHIP"},
+        {"name": "CANADA_PASSPORT"},
+        {"name": "CANADA_QUEBEC_HIN"},
+        {"name": "CANADA_SOCIAL_INSURANCE_NUMBER"},
+        {"name": "CHINA_PASSPORT"},
+        {"name": "CREDIT_CARD_NUMBER"},
+        {"name": "EMAIL_ADDRESS"},
+        {"name": "FRANCE_CNI"},
+        {"name": "FRANCE_NIR"},
+        {"name": "FRANCE_PASSPORT"},
+        {"name": "GERMANY_PASSPORT"},
+        {"name": "IBAN_CODE"},
+        {"name": "INDIA_PAN_INDIVIDUAL"},
+        {"name": "IP_ADDRESS"},
+        {"name": "JAPAN_INDIVIDUAL_NUMBER"},
+        {"name": "JAPAN_PASSPORT"},
+        {"name": "KOREA_PASSPORT"},
+        {"name": "KOREA_RRN"},
+        {"name": "LOCATION"},
+        {"name": "MAC_ADDRESS"},
+        {"name": "MAC_ADDRESS_LOCAL"},
+        {"name": "MEXICO_CURP_NUMBER"},
+        {"name": "MEXICO_PASSPORT"},
+        {"name": "NETHERLANDS_BSN_NUMBER"},
+        {"name": "PERSON_NAME"},
+        {"name": "PHONE_NUMBER"},
+        {"name": "SPAIN_NIE_NUMBER"},
+        {"name": "SPAIN_NIF_NUMBER"},
+        {"name": "SPAIN_PASSPORT"},
+        {"name": "SWIFT_CODE"},
+        {"name": "UK_DRIVERS_LICENSE_NUMBER"},
+        {"name": "UK_NATIONAL_HEALTH_SERVICE_NUMBER"},
+        {"name": "UK_NATIONAL_INSURANCE_NUMBER"},
+        {"name": "UK_PASSPORT"},
+        {"name": "UK_TAXPAYER_REFERENCE"},
+        {"name": "US_DRIVERS_LICENSE_NUMBER"},
+        {"name": "US_EMPLOYER_IDENTIFICATION_NUMBER"},
+        {"name": "US_HEALTHCARE_NPI"},
+        {"name": "US_PASSPORT"},
+        {"name": "US_SOCIAL_SECURITY_NUMBER"},
+        {"name": "US_VEHICLE_IDENTIFICATION_NUMBER"}
+      ],
+      "primitiveTransformation": {
+        "replaceWithInfoTypeConfig": {}
+      }
+    },
+    {
+      "infoTypes": [
+        {"name": "DATE"}
+      ],
+      "primitiveTransformation": {
+        "dateShiftConfig": {
+          "context": {
+            "name": "patient_id"
+          },
+          "upperBoundDays": 100,
+          "lowerBoundDays": -100,
+          "cryptoKey": {
+            "unwrapped": { "key": "123456789012345678901234567890ab" }
           }
         }
-      ]
+      }
     }
-  },
+  ],
   "infoTypeCategories": [
     {
       "name": "NAME",

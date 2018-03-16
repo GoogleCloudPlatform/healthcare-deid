@@ -38,6 +38,13 @@ export GOOGLE_APPLICATION_CREDENTIALS=~/key.json
 
 ### Dependencies
 
+This tool uses the Apache Beam SDK for Python, which requires Python version
+2.7.x. Check that you have version 2.7.x by running:
+
+```shell
+python --version
+```
+
 Running the pipeline requires having the Google Python API client, Google Cloud
 Storage client, and Python Apache Beam client installed. Note that as of
 2017-10-27, there is an incompatibility with the latest version of the
@@ -45,6 +52,7 @@ Storage client, and Python Apache Beam client installed. Note that as of
 
 ```shell
 virtualenv env
+source env/bin/activate
 pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-bigquery google-auth-httplib2 google-cloud-storage six==1.10.0
 ```
 
@@ -103,35 +111,40 @@ and manually specify the number of workers, use:
 --deid_config_file specifies a json file (example in [sample_deid_config.json](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/sample_deid_config.json))
 that contains an object with five fields:
 
-`deidConfig`: A [DeidentifyConfig](https://cloud.google.com/dlp/docs/reference/rest/v2beta2/organizations.deidentifyTemplates#DeidentifyTemplate.DeidentifyConfig)
-for use with the DLP API's content.deidentify method.
+1. `columns` specifies two types of columns - those that should be passed
+   through to the output table as-is (`passThrough`) and those that should be
+   processed by the DLP API and have the results written to the output table
+   (`inspect`).
 
-`infoTypeCategories`: A list of tags to use in the MAE output and the infoTypes
-from the deidConfig that correspond to those tags. Each entry in the list has a
-name, and a list of infoTypes, e.g.:
+   If not specified in the config, `passThrough` contains 'patient_id' and
+   'record_number', and `inspect` contains 'note'. See
+   sample_multi_column_deid_config.json for an example.
 
-```none
-{
-  "name": "FIRST_NAME",
-  "infoTypes": ["US_FEMALE_NAME", "US_MALE_NAME"]
-}
-```
+   If a `inspect` column specifies an `infoTypesToDeId` list, only those
+   infoTypes will be used for deidentification.
 
-`perRowTypes`: A list of columnName/infoTypeName pairs. For each inspect() and
-deid() call, for each row, we take the value from the specified column and add
-it as a custom infoType with the given name.
+1. `transformations` is a list of [InfoTypeTransformation](https://cloud.google.com/dlp/docs/reference/rest/v2beta2/organizations.deidentifyTemplates#DeidentifyTemplate.InfoTypeTransformation)
+that will be sent to the DLP API's content.deidentify method.
 
-`perDatasetTypes`: Similar to perRowTypes, but does a pre-processing step where
-it runs through the entire dataset and gets *all* the values for the given
-column(s). These are then passed to every inspect() and deid() request as
-custom infoTypes.
+1. `infoTypeCategories` is a list of tags to use in the MAE output and the
+   infoTypes from the deidConfig that should be mapped to those tags. Each entry in
+   the list has a name, and a list of infoTypes, e.g.:
 
-`columns`: Specifies two types of columns - those that should be passed through
-to the output table as-is (`passThrough`) and those that should be processed by
-the DLP API and have the results written to the output table (`inspect`). If
-not specified in the config, `passThrough` contains 'patient_id' and
-'record_number', and `inspect` contains 'note'. See
-sample_multi_column_deid_config.json for an example.
+  ```none
+  {
+    "name": "FIRST_NAME",
+    "infoTypes": ["US_FEMALE_NAME", "US_MALE_NAME"]
+  }
+  ```
+
+1. `perRowTypes` is a list of columnName/infoTypeName pairs. For each inspect()
+   and deid() call, for each row, we take the value from the specified column
+   and add it as a custom infoType with the given name.
+
+1. `perDatasetTypes` is similar to perRowTypes, but does a pre-processing step
+   where it runs through the entire dataset and gets *all* the values for the
+   given column(s). These are then passed to every inspect() and deid() request
+   as custom infoTypes.
 
 ## MAE Format
 

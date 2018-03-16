@@ -1,24 +1,20 @@
 {
-  "deidConfig": {
-    "infoTypeTransformations": {
-      "transformations": [
-        {
-          "infoTypes": [
-            {"name": "PHONE_NUMBER"},
-            {"name": "US_CENSUS_NAME"},
-            {"name": "US_FEMALE_NAME"},
-            {"name": "US_MALE_NAME"},
-            {"name": "KnownFirstName"},
-            {"name": "KnownLastName"},
-            {"name": "DatasetFirstName"}
-          ],
-          "primitiveTransformation": {
-            "replaceWithInfoTypeConfig": {}
-          }
-        }
-      ]
+  "transformations": [
+    {
+      "infoTypes": [
+        {"name": "PHONE_NUMBER"},
+        {"name": "US_CENSUS_NAME"},
+        {"name": "US_FEMALE_NAME"},
+        {"name": "US_MALE_NAME"},
+        {"name": "KnownFirstName"},
+        {"name": "KnownLastName"},
+        {"name": "DatasetFirstName"}
+      ],
+      "primitiveTransformation": {
+        "replaceWithInfoTypeConfig": {}
+      }
     }
-  },
+  ],
   "infoTypeCategories": [
     {
       "name": "NAME",

@@ -1,16 +1,23 @@
 {
   "deidentifyConfig": {
-    "infoTypeTransformations": {
-      "transformations": [
+    "recordTransformations": {
+      "fieldTransformations": [
         {
-          "infoTypes": [{"name": "PHONE_NUMBER"},
-                        {"name": "US_CENSUS_NAME"},
-                        {"name": "US_FEMALE_NAME"},
-                        {"name": "US_MALE_NAME"},
-                        {"name": "KnownFirstName"},
-                        {"name": "KnownLastName"},
-                        {"name": "DatasetFirstName"}],
-          "primitiveTransformation": {"replaceWithInfoTypeConfig": {}}
+          "fields": [{"name": "note"}, {"name": "last_name"}],
+          "infoTypeTransformations": {
+            "transformations": [
+              {
+                "infoTypes": [{"name": "PHONE_NUMBER"},
+                              {"name": "US_CENSUS_NAME"},
+                              {"name": "US_FEMALE_NAME"},
+                              {"name": "US_MALE_NAME"},
+                              {"name": "KnownFirstName"},
+                              {"name": "KnownLastName"},
+                              {"name": "DatasetFirstName"}],
+                "primitiveTransformation": {"replaceWithInfoTypeConfig": {}}
+              }
+            ]
+          }
         }
       ]
     }

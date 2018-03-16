@@ -437,5 +437,35 @@ class RunDeidLibTest(unittest.TestCase):
     self.assertEqual(EXPECTED_MAE2,
                      testutil.get_gcs_file('mae-bucket/mae-dir/222-2.xml'))
 
+  def testGenerateDeidConfig(self):
+    all_transformations = [
+        {'infoTypes': [{'name': 'NAME'}],
+         'primitiveTransformation': {'replaceWithInfoTypeConfig': {}}},
+        {'infoTypes': [{'name': 'AGE'}, {'name': 'DATE'}],
+         'primitiveTransformation': {'otherConfig': {}}}
+    ]
+    target_columns = [
+        {'name': 'patient_name', 'type': 'stringValue'},
+        {'name': 'date', 'type': 'stringValue', 'infoTypesToDeId': ['DATE']}]
+
+    gen = run_deid_lib._generate_deid_config(all_transformations,
+                                             target_columns)
+
+    expected = {'recordTransformations': {'fieldTransformations': [
+        {'fields': [{'name': 'date'}],
+         'infoTypeTransformations': {'transformations': [
+             {'infoTypes': [{'name': 'DATE'}],
+              'primitiveTransformation': {'otherConfig': {}}}]}},
+        {'fields': [{'name': 'patient_name'}],
+         'infoTypeTransformations': {'transformations': [
+             {'infoTypes': [{'name': 'NAME'}],
+              'primitiveTransformation': {'replaceWithInfoTypeConfig': {}}},
+             {'infoTypes': [{'name': 'AGE'}, {'name': 'DATE'}],
+              'primitiveTransformation': {'otherConfig': {}}}]}
+        }
+    ]}}
+
+    self.assertEqual(gen, expected)
+
 if __name__ == '__main__':
   unittest.main()
