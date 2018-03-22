@@ -342,6 +342,11 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
     if len(target_columns) == 1:
       ret['original_note'] = row[target_columns[0]['name']]
     for col in pass_through_columns:
+      if col['name'] not in row:
+        raise Exception(
+            'Expected column "{}" not found in row: "{}". Adjust your input '
+            'table or the "columns" section of your config file.'.format(
+                col['name'], row))
       ret[col['name']] = row[col['name']]
     retvals.append(ret)
   if 'findings' in response['result']:
@@ -368,11 +373,14 @@ def split_gcs_name(gcs_path):
   return bucket, blob
 
 
+def mae_to_bq_row(mae_result):
+  return {'record_id': mae_result.record_id, 'xml': mae_result.mae_xml}
+
+
 def write_mae(mae_result, storage_client_fn, project, mae_dir):
   """Write the MAE results to GCS."""
   storage_client = storage_client_fn(project)
-  filename = '{0}-{1}.xml'.format(
-      mae_result.patient_id, mae_result.record_number)
+  filename = '{}.xml'.format(mae_result.record_id)
   bucket_name, blob_dir = split_gcs_name(mae_dir)
   bucket = storage_client.get_bucket(bucket_name)
   blob = bucket.blob(posixpath.join(blob_dir, filename))
@@ -480,9 +488,13 @@ def generate_configs(config_text, input_query=None, input_table=None,
   """Generate DLP API configs based on the input config file."""
   mae_tag_categories = {}
   per_row_types = []
+  mae_key_columns = []
   cfg = json.loads(config_text, object_pairs_hook=collections.OrderedDict)
-  if 'infoTypeCategories' in cfg:
-    mae_tag_categories = cfg['infoTypeCategories']
+  if 'tagCategories' in cfg:
+    mae_tag_categories = cfg['tagCategories']
+  if 'keyColumns' in cfg:
+    mae_key_columns = cfg['keyColumns']
+
   if 'perRowTypes' in cfg:
     per_row_types = cfg['perRowTypes']
 
@@ -507,19 +519,21 @@ def generate_configs(config_text, input_query=None, input_table=None,
       info_types.add(t['name'])
   inspect_config['infoTypes'] = [{'name': t} for t in info_types]
 
-  pass_through_columns = [{'name': 'patient_id', 'type': 'stringValue'},
-                          {'name': 'record_number', 'type': 'integerValue'}]
-  target_columns = [{'name': 'note', 'type': 'stringValue'}]
-  if 'columns' in cfg:
-    if 'passThrough' in cfg['columns']:
-      pass_through_columns = cfg['columns']['passThrough']
-    if 'inspect' in cfg['columns']:
-      target_columns = cfg['columns']['inspect']
+  if 'columns' not in cfg:
+    raise Exception('Required section "columns" not specified in config.')
+  if 'inspect' not in cfg['columns']:
+    raise Exception('Required section "columns.inspect" not specified in '
+                    'config.')
+  target_columns = cfg['columns']['inspect']
+
+  pass_through_columns = []
+  if 'passThrough' in cfg['columns']:
+    pass_through_columns = cfg['columns']['passThrough']
 
   deid_config = _generate_deid_config(transformations, target_columns)
 
-  return (inspect_config, deid_config, mae_tag_categories, per_row_types,
-          pass_through_columns, target_columns)
+  return (inspect_config, deid_config, mae_tag_categories, mae_key_columns,
+          per_row_types, pass_through_columns, target_columns)
 
 
 def _load_per_dataset_types(per_dataset_cfg, input_query, input_table,
@@ -698,9 +712,9 @@ def _get_reads(p, input_table, input_query, bq_client, bq_config_fn,
 
 
 def run_pipeline(input_query, input_table, deid_table, findings_table,
-                 mae_dir, deid_config_file, task_name, credentials, project,
-                 storage_client_fn, bq_client, bq_config_fn, dlp_api_name,
-                 batch_size, pipeline_args):
+                 mae_dir, mae_table, deid_config_file, task_name, credentials,
+                 project, storage_client_fn, bq_client, bq_config_fn,
+                 dlp_api_name, batch_size, pipeline_args):
   """Read the records from BigQuery, DeID them, and write them to BigQuery."""
   if (input_query is None) == (input_table is None):
     return 'Exactly one of input_query and input_table must be set.'
@@ -708,21 +722,28 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if deid_config_file:
     with open(deid_config_file) as f:
       config_text = f.read()
-  (inspect_config, deid_config, mae_tag_categories, per_row_types,
-   pass_through_columns, target_columns) = generate_configs(
+  (inspect_config, deid_config, mae_tag_categories, mae_key_columns,
+   per_row_types, pass_through_columns, target_columns) = generate_configs(
        config_text, input_query, input_table, bq_client, bq_config_fn)
 
-  if len(target_columns) > 1 and mae_dir:
+  if len(target_columns) > 1 and (mae_dir or mae_table):
     raise Exception(
-        'Cannot use --mae_dir when multiple columns are specified for '
-        '"inspect" in the config file.')
+        'Cannot use --mae_dir or --mae_table when multiple columns are '
+        'specified for "inspect" in the config file.')
+  if mae_dir:
+    for col in mae_key_columns:
+      if not [ptc for ptc in pass_through_columns if ptc['name'] == col]:
+        raise Exception(
+            'Config file error: keyColumns has {}, which is not present in '
+            'columns.passThrough". All key columns must be passed through '
+            'un-transformed to allow for evals.'.format(col))
 
   p = beam.Pipeline(options=PipelineOptions(pipeline_args))
   reads = _get_reads(p, input_table, input_query, bq_client, bq_config_fn,
                      batch_size)
 
   inspect_data = None
-  if findings_table or mae_dir:
+  if findings_table or mae_dir or mae_table:
     inspect_data = (reads | 'inspect' >> beam.FlatMap(
         inspect, credentials, project, inspect_config,
         pass_through_columns, target_columns, per_row_types, dlp_api_name))
@@ -740,11 +761,23 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
       return ['--mae_dir must be a GCS path starting with "gs://".']
     write_dtd(storage_client_fn, project, mae_dir, mae_tag_categories,
               task_name)
-    _ = (inspect_data
-         | 'generate_mae' >> beam.Map(
-             mae.generate_mae, task_name, mae_tag_categories)
-         | 'write_mae' >> beam.Map(
-             write_mae, storage_client_fn, project, mae_dir))
+  mae_data = None
+  if mae_dir or mae_table:
+    if not mae_key_columns:
+      raise Exception('"mae.keyColumns" not specified in the config. Please '
+                      'specify a list of columns that will be used as the '
+                      'primary key for identifying MAE results.')
+    mae_data = (inspect_data | 'generate_mae' >> beam.Map(
+        mae.generate_mae, task_name, mae_tag_categories, mae_key_columns))
+  if mae_dir:
+    _ = (mae_data | 'write_mae_to_gcs' >> beam.Map(
+        write_mae, storage_client_fn, project, mae_dir))
+  if mae_table:
+    _ = (mae_data | 'mae_to_bq_row' >> beam.Map(mae_to_bq_row) |
+         'write_mae_to_bq' >> beam.io.Write(beam.io.BigQuerySink(
+             mae_table, schema=('record_id:STRING,xml:STRING'),
+             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
+
   if deid_table:
     if not deid_config_file:
       return ['Must set --deid_config_file when --deid_table is set.']
@@ -770,14 +803,12 @@ def add_all_args(parser):
   """Add command-line arguments to the parser."""
   parser.add_argument(
       '--input_query', type=str, required=False,
-      help=('BigQuery query to provide input data. Must yield rows with 3 '
-            'fields: (patient_id, record_number, note), unless columns are '
-            'configured differently in the config file.'))
+      help=('BigQuery query to provide input data. Must yield rows with all '
+            'fields specified in the "columns" section of the config file.'))
   parser.add_argument(
       '--input_table', type=str, required=False,
-      help=('BigQuery table to provide input data. Must have rows with 3 '
-            'fields: (patient_id, record_number, note), unless columns are '
-            'configured differently in the config file.'))
+      help=('BigQuery table to provide input data. Must have rows with all '
+            'fields specified in the "columns" section of the config file.'))
   parser.add_argument('--deid_table', type=str, required=False,
                       help='BigQuery table to store DeID\'d data.')
   parser.add_argument('--findings_table', type=str, required=False,
@@ -785,6 +816,8 @@ def add_all_args(parser):
   parser.add_argument('--mae_dir', type=str, required=False,
                       help=('GCS directory to store inspect() results in MAE '
                             'format.'))
+  parser.add_argument('--mae_table', type=str, required=False,
+                      help='BQ table to store inspect() results in MAE format.')
   parser.add_argument('--mae_task_name', type=str, required=False,
                       help='Task name to use in generated MAE files.',
                       default='InspectPhiTask')

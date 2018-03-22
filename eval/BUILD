@@ -24,9 +24,27 @@ package(
 licenses(["notice"])  # Apache License 2.0
 
 py_library(
+    name = "eval_lib",
+    srcs = ["eval_lib.py"],
+    deps = [
+        ":results_py_pb2",
+    ],
+)
+
+py_test(
+    name = "eval_lib_test",
+    srcs = ["eval_lib_test.py"],
+    deps = [
+        ":eval_lib",
+        ":results_py_pb2",
+    ],
+)
+
+py_library(
     name = "run_pipeline_lib",
     srcs = ["run_pipeline_lib.py"],
     deps = [
+        ":eval_lib",
         ":results_py_pb2",
         "//common:gcsutil",
         requirement("apache_beam"),

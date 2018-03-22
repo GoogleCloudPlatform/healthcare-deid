@@ -1,4 +1,14 @@
 {
+  "columns": {
+    "inspect": [
+        {"name": "note", "type": "stringValue"},
+        {"name": "last_name", "type": "stringValue"}
+    ],
+    "passThrough": [
+        {"name": "patient_id", "type": "stringValue"},
+        {"name": "record_number", "type": "integerValue"}
+    ]
+  },
   "transformations": [
     {
       "infoTypes": [
@@ -15,7 +25,8 @@
       }
     }
   ],
-  "infoTypeCategories": [
+  "keyColumns": ["patient_id", "record_number"],
+  "tagCategories": [
     {
       "name": "NAME",
       "infoTypes": ["US_CENSUS_NAME"]
@@ -58,11 +69,5 @@
         }
       ]
     }
-  ],
-  "columns": {
-    "inspect": [
-        {"name": "note", "type": "stringValue"},
-        {"name": "last_name", "type": "stringValue"}
-    ]
-  }
+  ]
 }

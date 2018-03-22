@@ -26,6 +26,19 @@ from common import testutil
 _fake_bq_db = collections.defaultdict(list)
 
 
+class FakeSource(iobase.BoundedSource):
+
+  def __init__(self):
+    self._records = []
+
+  def get_range_tracker(self, unused_a, unused_b):
+    return None
+
+  def read(self, unused_range_tracker):
+    for record in self._records:
+      yield record
+
+
 class DummyWriteTransform(beam.PTransform):
   """A transform that replaces iobase.WriteToText in tests."""
 
@@ -83,7 +96,11 @@ class FakeSink(iobase.Sink):
   def open_writer(self, unused_init_result, unused_uid):
     return self._writer
 
-  def finalize_write(self, unused_init_result, unused_writer_results):
+  def pre_finalize(self, unused_init_result, unused_writer_results):
+    pass
+
+  def finalize_write(self, unused_access_token, unused_table_names,
+                     unused_pre_finalize_results=None):
     pass
 
 

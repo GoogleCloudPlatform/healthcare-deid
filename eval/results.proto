@@ -16,7 +16,7 @@
 
 syntax = "proto3";
 
-package third_party.py.eval;
+package eval;
 
 message Results {
   // Aggregate results for strict entity matching comparison.

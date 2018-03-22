@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for google3.third_party.py.eval.run_pipeline_lib."""
+"""Tests for google3.eval.run_pipeline_lib."""
 
 from __future__ import absolute_import
 
@@ -92,8 +92,64 @@ class RunPipelineLibTest(unittest.TestCase):
 
   @patch('eval.run_pipeline_lib._get_utcnow')
   @patch('apache_beam.io.BigQuerySink')
+  @patch('apache_beam.io.BigQuerySource')
+  def testE2eBigquery(self, mock_bq_source_fn, mock_bq_sink_fn, mock_utcnow_fn):
+    def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
+      return beam_testutil.FakeSink(table_name)
+    mock_bq_sink_fn.side_effect = make_sink
+    now = 'current time'
+    mock_utcnow_fn.return_value = now
+
+    tp_tag = tag_template.format('TypeA', 0, 5)
+    fp_tag = tag_template.format('TypeA', 8, 10)
+    fn_tag = tag_template.format('TypeA', 11, 13)
+    fn2_tag = tag_template.format('TypeA', 15, 19)
+    findings_tags = '\n'.join([tp_tag, fp_tag])
+    golden_tags = '\n'.join([tp_tag, fn_tag, fn2_tag])
+
+    mock_bq_source_fn.return_value = beam_testutil.FakeSource()
+    mock_bq_source_fn.return_value._records = [
+        {'findings_record_id': '111-1',
+         'findings_xml': xml_template.format(findings_tags),
+         'golden_xml': xml_template.format(golden_tags)}]
+
+    types_to_ignore = ['ignore']
+    # These features are tested in testE2eGCS.
+    input_pattern, golden_dir, results_dir, per_note_table, debug_table = (
+        None, None, None, None, None)
+    mae_input_query = 'SELECT * from [project.dataset.table]'
+    mae_golden_table = 'project.dataset.golden_table'
+    run_pipeline_lib.run_pipeline(
+        input_pattern, golden_dir, results_dir, mae_input_query,
+        mae_golden_table, False, 'results_table', per_note_table, debug_table,
+        types_to_ignore, 'project', pipeline_args=None)
+
+    # Check that we generated the query correctly.
+    mock_bq_source_fn.assert_called_with(query=(
+        'SELECT findings.record_id, findings.xml, golden.xml FROM '
+        '(SELECT * from [project.dataset.table]) AS findings '
+        'LEFT JOIN [project.dataset.golden_table] AS golden '
+        'ON findings.record_id=golden.record_id'))
+
+    # Check we wrote the correct results to BigQuery.
+    expected_results = [
+        {'info_type': 'ALL', 'recall': 0.333333, 'precision': 0.5,
+         'f_score': 0.4, 'true_positives': 1,
+         'false_positives': 1, 'false_negatives': 2},
+        {'info_type': u'TypeA', 'recall': 0.333333,
+         'precision': 0.5, 'f_score': 0.4,
+         'true_positives': 1, 'false_positives': 1, 'false_negatives': 2}]
+    for r in expected_results:
+      r.update({'timestamp': now})
+    actual_results = sorted(beam_testutil.get_table('results_table'),
+                            key=lambda x: x['info_type'])
+    self.assertEqual([normalize_dict_floats(r) for r in expected_results],
+                     [normalize_dict_floats(r) for r in actual_results])
+
+  @patch('eval.run_pipeline_lib._get_utcnow')
+  @patch('apache_beam.io.BigQuerySink')
   @patch('google.cloud.storage.Client')
-  def testE2E(self, fake_client_fn, mock_bq_sink_fn, mock_utcnow_fn):
+  def testE2eGCS(self, fake_client_fn, mock_bq_sink_fn, mock_utcnow_fn):
     def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
       return beam_testutil.FakeSink(table_name)
     mock_bq_sink_fn.side_effect = make_sink
@@ -139,7 +195,10 @@ class RunPipelineLibTest(unittest.TestCase):
     self.old_write_to_text = beam.io.WriteToText
     beam.io.WriteToText = beam_testutil.DummyWriteTransform
     types_to_ignore = ['ignore']
-    run_pipeline_lib.run_pipeline(input_pattern, golden_dir, results_dir, True,
+    mae_input_query = None
+    mae_golden_table = None
+    run_pipeline_lib.run_pipeline(input_pattern, golden_dir, results_dir,
+                                  mae_input_query, mae_golden_table, True,
                                   'results_table', 'per_note_results_table',
                                   'debug_output_table', types_to_ignore,
                                   'project', pipeline_args=None)
@@ -243,112 +302,6 @@ stats {
     self.assertEqual([expected_result1, expected_result2],
                      actual_results)
 
-  def testHMean(self):
-    self.assertAlmostEqual(2.0, run_pipeline_lib.hmean(1, 2, 4, 4))
-    self.assertTrue(math.isnan(run_pipeline_lib.hmean(0, 1, 2)))
-
-  def testCalculateStats(self):
-    stats = results_pb2.Stats()
-    stats.true_positives = 12
-    stats.false_positives = 8
-    stats.false_negatives = 3
-    run_pipeline_lib.calculate_stats(stats)
-    self.assertAlmostEqual(.6, stats.precision)
-    self.assertAlmostEqual(.8, stats.recall)
-    self.assertAlmostEqual(.6857142857142856, stats.f_score)
-
-    stats = results_pb2.Stats()
-    run_pipeline_lib.calculate_stats(stats)
-    self.assertTrue(math.isnan(stats.precision))
-    self.assertTrue(math.isnan(stats.recall))
-    self.assertTrue(math.isnan(stats.f_score))
-    self.assertEqual(
-        'Precision has denominator of zero. Recall has denominator of zero. '
-        'f-score is NaN',
-        stats.error_message)
-
-  def testMacroStats(self):
-    macro_stats = run_pipeline_lib._MacroStats()
-    macro_stats.count = 50
-    macro_stats.precision_sum = 40
-    macro_stats.recall_sum = 45
-
-    stats = macro_stats.calculate_stats()
-    self.assertAlmostEqual(.8, stats.precision)
-    self.assertAlmostEqual(.9, stats.recall)
-    self.assertAlmostEqual(.8470588235294118, stats.f_score)
-
-    macro_stats = run_pipeline_lib._MacroStats()
-    stats = macro_stats.calculate_stats()
-    self.assertTrue(math.isnan(stats.precision))
-    self.assertTrue(math.isnan(stats.recall))
-    self.assertTrue(math.isnan(stats.f_score))
-
-  def testTokenizeSet(self):
-    finding = run_pipeline_lib.Finding
-    full_text = 'hi: two tokens and: three\tmore  tokens'
-    findings = [finding('TYPE_A', 0, 2, 'hi', 0, full_text),
-                finding('TYPE_B', 4, 14, 'two tokens', 0, full_text),
-                finding('TYPE_C', 20, 38, 'three\tmore  tokens', 0, full_text),
-                # 'tokens' is a duplicate, so it's not added to the results.
-                finding('TYPE_D', 32, 46, 'tokens overlap')]
-    tokenized = run_pipeline_lib.tokenize_set(findings)
-    expected_tokenized = set([finding('TYPE_A', 0, 2, 'hi'),
-                              finding('TYPE_B', 4, 7, 'two'),
-                              finding('TYPE_B', 8, 14, 'tokens'),
-                              finding('TYPE_C', 20, 25, 'three'),
-                              finding('TYPE_C', 26, 30, 'more'),
-                              finding('TYPE_C', 32, 38, 'tokens'),
-                              finding('TYPE_D', 39, 46, 'overlap')])
-    self.assertEqual(expected_tokenized, tokenized)
-
-  def testContext(self):
-    full_text = 'small sample text sentence'
-    f = run_pipeline_lib.Finding.from_tag('TYPE_A', '6~17', full_text)
-    self.assertEqual('small {[--sample text--]} sentence', f.context())
-
-    findings = sorted(run_pipeline_lib.tokenize_finding(f), key=str)
-    self.assertEqual('small {[--sample--]} text sentence',
-                     findings[1].context())
-    self.assertEqual('small sample {[--text--]} sentence',
-                     findings[0].context())
-
-  def testLooseMatching(self):
-    finding = run_pipeline_lib.Finding
-    findings = set([finding('TYPE_A', 0, 3, 'one'),
-                    finding('TYPE_B', 5, 8, 'two'),
-                    finding('TYPE_C', 20, 25, 'three')])
-    golden_findings = set([finding('TYPE_A', 0, 3, 'hit'),
-                           finding('TYPE_B', 7, 10, 'hit'),
-                           finding('TYPE_C', 25, 29, 'miss')])
-    result = run_pipeline_lib.count_matches(
-        findings, golden_findings, record_id='', strict=False)
-
-    expected_stats = results_pb2.Stats()
-    expected_stats.true_positives = 2
-    expected_stats.false_positives = 1
-    expected_stats.false_negatives = 1
-    expected_stats.precision = .66666667
-    expected_stats.recall = .66666667
-    expected_stats.f_score = .66666667
-    self.assertEqual(normalize_floats(expected_stats),
-                     normalize_floats(result.stats))
-
-    a = results_pb2.Stats()
-    a.true_positives = 1
-    b = results_pb2.Stats()
-    b.true_positives = 1
-    c = results_pb2.Stats()
-    c.false_positives = 1
-    c.false_negatives = 1
-    expected_per_type = {'TYPE_A': a, 'TYPE_B': b, 'TYPE_C': c}
-    self.assertEqual(expected_per_type, result.per_type)
-
-  def testInvalidSpans(self):
-    with self.assertRaises(Exception):
-      run_pipeline_lib.Finding.from_tag('invalid', '4~2', 'full text')
-    with self.assertRaises(Exception):
-      run_pipeline_lib.Finding.from_tag('out_of_range', '0~10', 'full text')
 
 if __name__ == '__main__':
   unittest.main()

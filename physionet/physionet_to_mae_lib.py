@@ -35,8 +35,7 @@ from google.cloud import storage
 def write_mae(mae_result, project, mae_dir):
   """Write the MAE results to GCS."""
   storage_client = storage.Client(project)
-  filename = '{0}-{1}.xml'.format(
-      mae_result.patient_id, mae_result.record_number)
+  filename = '{}.xml'.format(mae_result.record_id)
   gcs_name = gcsutil.GcsFileName.from_path(mae_dir)
   bucket = storage_client.get_bucket(gcs_name.bucket)
   blob = bucket.blob(posixpath.join(gcs_name.blob, filename))
@@ -50,7 +49,8 @@ def run_pipeline(input_pattern, output_dir, mae_task_name, project,
   _ = (p |
        'match_files' >> beam.Create(f2pn.match_files(input_pattern)) |
        'to_records' >> beam.FlatMap(f2pn.map_phi_to_findings) |
-       'generate_mae' >> beam.Map(mae.generate_mae, mae_task_name, {}) |
+       'generate_mae' >> beam.Map(mae.generate_mae, mae_task_name, {},
+                                  ['patient_id', 'record_number']) |
        'write_mae' >> beam.Map(write_mae, project, output_dir)
       )
   result = p.run().wait_until_finish()

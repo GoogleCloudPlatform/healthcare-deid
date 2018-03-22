@@ -1,0 +1,352 @@
+# Copyright 2017 Google Inc. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Evaluate DeID findings on Google Cloud."""
+
+from __future__ import absolute_import
+
+import collections
+import itertools
+import logging
+import math
+
+from eval import results_pb2
+
+
+class Finding(object):
+  """Class to hold category, span, and text of a PHI finding."""
+
+  def __init__(self, category, start, end, text, context_start=0, context=''):
+    self.category = category
+    self.start = start
+    self.end = end
+    self.text = text
+    self.context_start = context_start
+    self.raw_context = context
+
+  @classmethod
+  def from_tag(cls, category, spans, full_text):
+    """Initialize a Finding from MAE tag data (plus the full text)."""
+    startstr, endstr = spans.split('~')
+    start = int(startstr)
+    end = int(endstr)
+    if start >= end:
+      raise Exception('Invalid span "{}"'.format(spans))
+    if end > len(full_text):
+      raise Exception('Span "{}" out of range (0-{}).'.format(
+          spans, len(full_text)))
+    # Store up to 100 characters of context on either side of the token.
+    context_start = max(0, start-100)
+    token_len = end - start
+    context_end = context_start + 200 + token_len
+    context = full_text[context_start:context_end]
+    return cls(category, start, end, full_text[start:end], context_start,
+               context)
+
+  def intersects(self, findings):
+    """Return True if self overlaps with any of the given list of Findings."""
+    for finding in findings:
+      if ((self.start <= finding.start and self.end > finding.start) or
+          (finding.start <= self.start and finding.end > self.start)):
+        return True
+    return False
+
+  def context(self):
+    """Return the context with the token made more visible."""
+    relative_start = self.start - self.context_start
+    context_first_half = self.raw_context[:relative_start]
+    context_second_half = self.raw_context[relative_start+len(self.text):]
+    return (context_first_half + '{[--' + self.text + '--]}' +
+            context_second_half)
+
+  def __hash__(self):
+    return hash((self.category, self.start, self.end))
+
+  def __eq__(self, other):
+    return (self.category == other.category and self.start == other.start and
+            self.end == other.end)
+
+  def __repr__(self):
+    return '{}: {}~{} "{}" ({})'.format(
+        self.category, self.start, self.end, self.text, self.context())
+
+
+def hmean(*args):
+  """Calculate the harmonic mean of the given values.
+
+  http://en.wikipedia.org/wiki/Harmonic_mean
+
+  Args:
+    *args: List of numbers to take the harmonic mean of.
+  Returns:
+    Harmonic mean of args, or NaN if an arg is <= 0.
+  """
+  for val in args:
+    if val <= 0:
+      return float('NaN')
+  return len(args) / sum(1. / val for val in args)
+
+
+def calculate_stats(stats):
+  """Calculate derived stats and put them into the given results_pb2.Stats."""
+  stats.error_message = ''
+  if stats.true_positives + stats.false_positives:
+    stats.precision = (float(stats.true_positives) /
+                       (stats.true_positives + stats.false_positives))
+  else:
+    stats.precision = float('NaN')
+    stats.error_message += 'Precision has denominator of zero. '
+
+  if stats.true_positives + stats.false_negatives:
+    stats.recall = (float(stats.true_positives) /
+                    (stats.true_positives + stats.false_negatives))
+  else:
+    stats.recall = float('NaN')
+    stats.error_message += 'Recall has denominator of zero. '
+
+  stats.f_score = hmean(stats.precision, stats.recall)
+  if math.isnan(stats.f_score):
+    stats.error_message += 'f-score is NaN'
+
+  return stats
+
+
+def tokenize_finding(finding):
+  """Turn the finding into multiple findings split by whitespace."""
+  tokenized = set()
+  tokens = finding.text.split()
+  cursor = 0
+  # Note that finding.start and finding.end refer to the location in the overall
+  # text, but finding.text is just the text for this finding.
+  for token in tokens:
+    start = finding.text.find(token, cursor)
+    cursor = end = start + len(token)
+    tokenized.add(Finding(
+        finding.category, start + finding.start, end + finding.start, token,
+        finding.context_start, finding.raw_context))
+  return tokenized
+
+
+def tokenize_set(findings):
+  """Split the findings on whitespace and return the tokenized set."""
+  all_tokenized = set()
+  findings = list(findings)
+  for f in findings:
+    for tokenized in tokenize_finding(f):
+      # Add to all_tokenized, unless there's already an equivalent finding (i.e.
+      # one with the same start and end).
+      found = False
+      for existing_finding in all_tokenized:
+        if (existing_finding.start == tokenized.start and
+            existing_finding.end == tokenized.end):
+          found = True
+      if not found:
+        all_tokenized.add(tokenized)
+
+  return all_tokenized
+
+
+def _deserialize_individual_result(record_id, serialized_stats,
+                                   per_type_serialized_stats):
+  ir = IndividualResult()
+  ir.record_id = record_id
+  ir.stats.ParseFromString(serialized_stats)
+  for type_name, stats in per_type_serialized_stats.iteritems():
+    ir.per_type[type_name].ParseFromString(stats)
+
+  return ir
+
+
+class IndividualResult(object):
+
+  def __init__(self):
+    self.record_id = ''
+    self.stats = results_pb2.Stats()
+    self.per_type = collections.defaultdict(results_pb2.Stats)
+    self.debug_info = []
+
+  # Dataflow's pickling gets confused if it has to deal with raw protos, so we
+  # serialize them here.
+  def __reduce__(self):
+    per_type_serialized = {}
+    for type_name, stats in self.per_type.iteritems():
+      per_type_serialized[type_name] = stats.SerializeToString()
+    return (_deserialize_individual_result,
+            (self.record_id, self.stats.SerializeToString(),
+             per_type_serialized))
+
+
+def count_matches(findings, golden_findings, record_id, strict):
+  """Calculate the true/false positive/negatives for the given findings.
+
+  Args:
+    findings: List of Finding objects to count matches for.
+    golden_findings: List of Finding objects to compare against.
+    record_id: str; Unique identifier for this set of findings.
+    strict: bool; If True, use strict matching, i.e. it's only a match if the
+      type matches and the text is exactly the same. Otherwise, two findings
+      match if they have at least one character in common, and type is ignored.
+
+  Returns:
+    An IndividualResult object containing the counts and derived stats.
+  """
+  result = IndividualResult()
+  result.record_id = record_id
+  for finding in findings:
+    if ((strict and finding not in golden_findings) or
+        (not strict and not finding.intersects(golden_findings))):
+      result.stats.false_positives += 1
+      result.debug_info.append(
+          {'record_id': record_id, 'error_type': 'false_positive',
+           'text': finding.text, 'context': finding.context(),
+           'info_type': finding.category})
+      result.per_type[finding.category].false_positives += 1
+
+  for golden_finding in golden_findings:
+    if ((strict and golden_finding in findings) or
+        (not strict and golden_finding.intersects(findings))):
+      result.stats.true_positives += 1
+      result.per_type[golden_finding.category].true_positives += 1
+    else:
+      result.debug_info.append(
+          {'record_id': record_id, 'error_type': 'false_negative',
+           'text': golden_finding.text, 'context': golden_finding.context(),
+           'info_type': golden_finding.category})
+      result.per_type[golden_finding.category].false_negatives += 1
+      result.stats.false_negatives += 1
+
+  calculate_stats(result.stats)
+  return result
+
+
+def binary_token_compare(findings, golden_findings, record_id):
+  tokenized_findings = tokenize_set(findings)
+  tokenized_goldens = tokenize_set(golden_findings)
+  return count_matches(
+      tokenized_findings, tokenized_goldens, record_id, strict=False)
+
+
+def strict_entity_compare(findings, golden_findings, record_id):
+  return count_matches(findings, golden_findings, record_id, strict=True)
+
+
+class _MacroStats(object):
+
+  def __init__(self):
+    self.count = 0
+    self.precision_sum = 0
+    self.recall_sum = 0
+    self.error_message = ''
+
+  def calculate_stats(self):
+    """Generate a resuts_pb2.Stats message with the macro-averaged results."""
+    stats = results_pb2.Stats()
+    if not self.count:
+      stats.precision = float('NaN')
+      stats.recall = float('NaN')
+      stats.f_score = float('NaN')
+      stats.error_message = 'Averaging over zero results.'
+      return stats
+    stats.precision = float(self.precision_sum) / self.count
+    stats.recall = float(self.recall_sum) / self.count
+    stats.f_score = hmean(stats.precision, stats.recall)
+    stats.error_message = self.error_message
+    return stats
+
+
+def _deserialize_accumulated_results(serialized_micro_stats, macro,
+                                     per_type_serialized_stats):
+  ar = AccumulatedResults()
+  ar.micro.ParseFromString(serialized_micro_stats)
+  ar.macro = macro
+  for type_name, stats in per_type_serialized_stats.iteritems():
+    ar.per_type[type_name].ParseFromString(stats)
+
+  return ar
+
+
+class AccumulatedResults(object):
+  """Accumulates micro and macro averages."""
+
+  def __init__(self):
+    self.micro = results_pb2.Stats()
+    self.macro = _MacroStats()
+    # Map from info type name to Stats pb.
+    self.per_type = collections.defaultdict(results_pb2.Stats)
+
+  # Dataflow's pickling gets confused if it has to deal with raw protos, so we
+  # serialize them here.
+  def __reduce__(self):
+    per_type_serialized = {}
+    for type_name, stats in self.per_type.iteritems():
+      per_type_serialized[type_name] = stats.SerializeToString()
+    return (_deserialize_accumulated_results,
+            (self.micro.SerializeToString(), self.macro, per_type_serialized))
+
+  def add_result(self, result):
+    """Add an individual result to the AccumulatedResults.
+
+    Args:
+      result: IndividualResult to add.
+    """
+    self.micro.true_positives += result.stats.true_positives
+    self.micro.false_positives += result.stats.false_positives
+    self.micro.false_negatives += result.stats.false_negatives
+    for info_type, stats in result.per_type.iteritems():
+      self.per_type[info_type].true_positives += stats.true_positives
+      self.per_type[info_type].false_positives += stats.false_positives
+      self.per_type[info_type].false_negatives += stats.false_negatives
+
+    if (math.isnan(result.stats.precision) or
+        math.isnan(result.stats.recall)):
+      self.macro.error_message += 'Ignored results for {0} '.format(
+          result.record_id)
+      logging.warning('Macro average ignoring results for %s', result.record_id)
+    else:
+      self.macro.count += 1
+      self.macro.precision_sum += result.stats.precision
+      self.macro.recall_sum += result.stats.recall
+
+  def per_type_protos(self):
+    """Return the per-type stats as a list of PerTypeStats protos."""
+    protos = []
+    for info_type, stats in sorted(self.per_type.iteritems()):
+      pb = results_pb2.PerTypeStats()
+      pb.info_type_category = info_type
+      pb.stats.CopyFrom(calculate_stats(stats))
+      protos.append(pb)
+    return protos
+
+  def __add__(self, other):
+    new = AccumulatedResults()
+    new.micro.true_positives = (
+        self.micro.true_positives + other.micro.true_positives)
+    new.micro.false_positives = (
+        self.micro.false_positives + other.micro.false_positives)
+    new.micro.false_negatives = (
+        self.micro.false_negatives + other.micro.false_negatives)
+    for info_type, stats in itertools.chain(self.per_type.iteritems(),
+                                            other.per_type.iteritems()):
+      new.per_type[info_type].true_positives += stats.true_positives
+      new.per_type[info_type].false_positives += stats.false_positives
+      new.per_type[info_type].false_negatives += stats.false_negatives
+
+    new.macro.count = self.macro.count + other.macro.count
+    new.macro.precision_sum = (
+        self.macro.precision_sum + other.macro.precision_sum)
+    new.macro.recall_sum = self.macro.recall_sum + other.macro.recall_sum
+    new.macro.error_message = (
+        self.macro.error_message + other.macro.error_message)
+    return new
+

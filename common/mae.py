@@ -17,8 +17,7 @@
 import collections
 
 
-MaeTuple = collections.namedtuple('MaeTuple',
-                                  ['patient_id', 'record_number', 'mae_xml'])
+MaeTuple = collections.namedtuple('MaeTuple', ['record_id', 'mae_xml'])
 
 
 def _start(finding):
@@ -51,8 +50,21 @@ def _get_infotype_to_tag_map(mae_tag_categories):
   return infotype_to_tag_map
 
 
-def generate_mae(inspect_result, task_name, mae_tag_categories):
-  """Write out inspect() findings in MAE format alongside the text in GCS."""
+def generate_mae(inspect_result, task_name, mae_tag_categories, key_columns):
+  """Convert inspect() findings to MAE format.
+
+  Args:
+    inspect_result: Dict containing 'original_note', 'result' (findings from DLP
+      inspect() call), and one entry for each of key_columns.
+    task_name: String to use as the MAE task name.
+    mae_tag_categories: Dict containing 'name' (string to use as a MAE tag) and
+      'infoTypes' (list of infoTypes that should use this tag).
+    key_columns: The values from these columns will be concatenated together
+      with dashes to form the record_id.
+
+  Returns:
+    A MaeTuple.
+  """
   infotype_to_tag_map = _get_infotype_to_tag_map(mae_tag_categories)
   mae_xml = [u"""<?xml version="1.0" encoding="UTF-8" ?>
 <{0}>
@@ -70,5 +82,9 @@ def generate_mae(inspect_result, task_name, mae_tag_categories):
         tag_name, count, _start(finding), _end(finding)))
 
   mae_xml.append('\n</TAGS></{0}>\n'.format(task_name))
-  return MaeTuple(inspect_result['patient_id'], inspect_result['record_number'],
-                  ''.join(mae_xml))
+
+  record_id_values = []
+  for col in key_columns:
+    record_id_values.append(str(inspect_result[col]))
+
+  return MaeTuple('-'.join(record_id_values), ''.join(mae_xml))

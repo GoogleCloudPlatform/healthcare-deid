@@ -77,3 +77,26 @@ docker build -t mae .
 docker tag mae gcr.io/${PROJECT?}/mae:latest
 gcloud docker -- push gcr.io/${PROJECT?}/mae:latest
 ```
+
+## Uploading XML files to BigQuery
+
+Download the code for the upload tool from GitHub:
+
+```shell
+curl https://raw.githubusercontent.com/GoogleCloudPlatform/healthcare-deid/master/mae/upload_files_to_bq.py > upload_files_to_bq.py && \
+chmod 755 upload_files_to_bq.py
+```
+
+Install the apache beam client:
+
+```shell
+virtualenv env
+source env/bin/activate
+pip install apache_beam[gcp]
+```
+
+Run the tool:
+
+```shell
+python upload_files_to_bq.py --file_pattern="dir/*.xml" --table_name project:dataset.table
+```

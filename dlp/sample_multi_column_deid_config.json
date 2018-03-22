@@ -89,7 +89,8 @@
       }
     }
   ],
-  "infoTypeCategories": [
+  "keyColumns": ["patient_id", "record_number"],
+  "tagCategories": [
     {
       "name": "NAME",
       "infoTypes": ["PERSON_NAME"]

@@ -40,6 +40,13 @@ This tool uses the Apache Beam SDK for Python, which requires Python version
 python --version
 ```
 
+The code for the pipeline is available for download from GitHub:
+
+```shell
+git clone https://github.com/GoogleCloudPlatform/healthcare-deid.git && \
+cd healthcare-deid
+```
+
 Running the pipeline requires having the Google Python API client, Google Cloud
 Storage client, and Python Apache Beam client installed. Note that as of
 2017-10-27, there is an incompatibility with the latest version of the
@@ -51,25 +58,40 @@ source env/bin/activate
 pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-storage six==1.10.0
 ```
 
-The code for the pipeline itself is available for download from GitHub:
-
-```shell
-git clone https://github.com/GoogleCloudPlatform/healthcare-deid.git &&
-cd healthcare-deid
-```
-
 ## Running the pipeline
 
-The pipeline takes as input a pattern indicating which findings to compare, and
-a directory containing "golden" findings to comare against. It is expected that
-the findings are in MAE format (see dlp/README.md) and that each file matching
-the pattern will have a counterpart with the same name in --mae_golden_dir.
+### GCS Input
+If --mae_input_pattern and --mae_golden_dir are specified, the pipeline takes as
+input a pattern indicating which findings to compare, and a directory containing
+"golden" findings to comare against. It is expected that the findings are in MAE
+format (see dlp/README.md) and that each file matching the pattern will have a
+counterpart with the same name in --mae_golden_dir.
 
+### BigQuery Input
+If --mae_input_query and --mae_golden_table are specified, the input xml comes
+from the specified BigQuery query, which is left-joined on record_id with data
+from mae_golden_table. The input query and golden table must both have
+`record_id` and `xml` fields.
+
+### XML format for strict entity matching
 Note that for strict entity matching to work, the .dtd files used to create the
 inputs and the goldens must use the same type names. The ordering and prefixes,
 however, do not need to match for the .dtd files to be compatible.
 
-Output is written to a GCS file called `aggregate_results.txt` in --results_dir.
+### Output
+Overall output is:
+
+ - Printed to stdout.
+ - Written to a GCS file called `aggregate_results.txt` in --results_dir, if
+   specified.
+ - Written to --results_table in BigQuery, if specified.
+
+Detailed output is:
+
+ - Written to a GCS file `per-note-results` in --results_dir, if
+   --write_per_note_stats_to_gcs is specified.
+ - Written to --per_note_results_table, and/or
+   --debug_output_table in BigQuery, if either of those are specified.
 
 Example usage:
 
@@ -79,6 +101,17 @@ bazel-bin/eval/run_pipeline \
   --mae_input_pattern gs://${BUCKET?}/dir/*.xml \
   --mae_golden_dir gs://${BUCKET?}/goldens/ \
   --results_dir gs://${BUCKET?}/eval/ \
+  --project ${PROJECT?}
+```
+
+Or with BigQuery instead of GCS:
+
+```shell
+bazel build eval:run_pipeline && \
+bazel-bin/eval/run_pipeline \
+  --mae_input_query "SELECT * FROM [${PROJECT?}:${DATASET?}.table]" \
+  --mae_golden_table ${PROJECT?}:${DATASET?}.goldens \
+  --results_table ${PROJECT?}:${DATASET?}.results \
   --project ${PROJECT?}
 ```
 

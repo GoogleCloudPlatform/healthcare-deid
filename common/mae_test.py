@@ -1,4 +1,4 @@
-"""Tests for google3.third_party.py.dlp.mae."""
+"""Tests for google3.dlp.mae."""
 
 from __future__ import absolute_import
 
@@ -45,7 +45,9 @@ class MaeTest(unittest.TestCase):
         {'name': 'TagA', 'infoTypes': ['infoTypeA']},
         {'name': 'TagB', 'infoTypes': ['infoTypeUnused']}
     ]
-    result = mae.generate_mae(inspect_result, 'task_name', mae_tag_categories)
+    key_columns = ['patient_id', 'record_number']
+    result = mae.generate_mae(inspect_result, 'task_name', mae_tag_categories,
+                              key_columns)
     expected = """<?xml version="1.0" encoding="UTF-8" ?>
 <task_name>
 <TEXT><![CDATA[this is the note with the PHI]]></TEXT>
@@ -54,6 +56,7 @@ class MaeTest(unittest.TestCase):
 </TAGS></task_name>
 """
     self.assertEqual(expected, result.mae_xml)
+    self.assertEqual('111-2', result.record_id)
 
 if __name__ == '__main__':
   unittest.main()

@@ -16,9 +16,7 @@
 
 from __future__ import absolute_import
 
-import collections
 from datetime import datetime
-import itertools
 import logging
 import math
 import posixpath
@@ -27,6 +25,7 @@ import xml.etree.ElementTree as XmlTree
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from common import gcsutil
+from eval import eval_lib
 from eval import results_pb2
 from google.cloud import storage
 
@@ -37,65 +36,21 @@ def _get_utcnow():
   return datetime.utcnow()
 
 
-class Finding(object):
-  """Class to hold category, span, and text of a PHI finding."""
-
-  def __init__(self, category, start, end, text, context_start=0, context=''):
-    self.category = category
-    self.start = start
-    self.end = end
-    self.text = text
-    self.context_start = context_start
-    self.raw_context = context
-
-  @classmethod
-  def from_tag(cls, category, spans, full_text):
-    """Initialize a Finding from MAE tag data (plus the full text)."""
-    startstr, endstr = spans.split('~')
-    start = int(startstr)
-    end = int(endstr)
-    if start >= end:
-      raise Exception('Invalid span "{}"'.format(spans))
-    if end > len(full_text):
-      raise Exception('Span "{}" out of range (0-{}).'.format(
-          spans, len(full_text)))
-    # Store up to 100 characters of context on either side of the token.
-    context_start = max(0, start-100)
-    token_len = end - start
-    context_end = context_start + 200 + token_len
-    context = full_text[context_start:context_end]
-    return cls(category, start, end, full_text[start:end], context_start,
-               context)
-
-  def intersects(self, findings):
-    """Return True if self overlaps with any of the given list of Findings."""
-    for finding in findings:
-      if ((self.start <= finding.start and self.end > finding.start) or
-          (finding.start <= self.start and finding.end > self.start)):
-        return True
-    return False
-
-  def context(self):
-    """Return the context with the token made more visible."""
-    relative_start = self.start - self.context_start
-    context_first_half = self.raw_context[:relative_start]
-    context_second_half = self.raw_context[relative_start+len(self.text):]
-    return (context_first_half + '{[--' + self.text + '--]}' +
-            context_second_half)
-
-  def __hash__(self):
-    return hash((self.category, self.start, self.end))
-
-  def __eq__(self, other):
-    return (self.category == other.category and self.start == other.start and
-            self.end == other.end)
-
-  def __repr__(self):
-    return '{}: {}~{} "{}" ({})'.format(
-        self.category, self.start, self.end, self.text, self.context())
+def _get_findings_from_text(raw_text, types_to_ignore):
+  """Convert MAE xml to eval_lib.Finding objects."""
+  tree = XmlTree.fromstring(raw_text)
+  text = tree.find('TEXT').text
+  findings = set()
+  if tree.find('TAGS') is not None:
+    for tag_elem in tree.find('TAGS'):
+      if tag_elem.tag in types_to_ignore:
+        continue
+      findings.add(eval_lib.Finding.from_tag(
+          tag_elem.tag, tag_elem.get('spans'), text))
+  return findings
 
 
-def _get_findings(filename, storage_client, types_to_ignore):
+def _get_findings_from_file(filename, storage_client, types_to_ignore):
   """Parse findings from the given MAE XML file."""
   bucket = storage_client.lookup_bucket(filename.bucket)
   if not bucket:
@@ -105,163 +60,40 @@ def _get_findings(filename, storage_client, types_to_ignore):
     raise Exception('Failed to get blob "{}" in bucket "{}".'.format(
         filename.blob, filename.bucket))
   contents = blob.download_as_string()
-  tree = XmlTree.fromstring(contents)
-  text = tree.find('TEXT').text
-  findings = set()
-  if tree.find('TAGS') is not None:
-    for tag_elem in tree.find('TAGS'):
-      if tag_elem.tag in types_to_ignore:
-        continue
-      findings.add(Finding.from_tag(tag_elem.tag, tag_elem.get('spans'), text))
-  return findings
+  return _get_findings_from_text(contents, types_to_ignore)
 
 
-def hmean(*args):
-  """Calculate the harmonic mean of the given values.
+def compare_findings(findings, golden_findings, record_id):
+  logging.info('Running comparison for record "%s"', record_id)
 
-  http://en.wikipedia.org/wiki/Harmonic_mean
-
-  Args:
-    *args: List of numbers to take the harmonic mean of.
-  Returns:
-    Harmonic mean of args, or NaN if an arg is <= 0.
-  """
-  for val in args:
-    if val <= 0:
-      return float('NaN')
-  return len(args) / sum(1. / val for val in args)
+  strict_entity_results = eval_lib.strict_entity_compare(
+      findings, golden_findings, record_id)
+  binary_token_results = eval_lib.binary_token_compare(
+      findings, golden_findings, record_id)
+  return strict_entity_results, binary_token_results
 
 
-def calculate_stats(stats):
-  """Calculate derived stats and put them into the given results_pb2.Stats."""
-  stats.error_message = ''
-  if stats.true_positives + stats.false_positives:
-    stats.precision = (float(stats.true_positives) /
-                       (stats.true_positives + stats.false_positives))
-  else:
-    stats.precision = float('NaN')
-    stats.error_message += 'Precision has denominator of zero. '
-
-  if stats.true_positives + stats.false_negatives:
-    stats.recall = (float(stats.true_positives) /
-                    (stats.true_positives + stats.false_negatives))
-  else:
-    stats.recall = float('NaN')
-    stats.error_message += 'Recall has denominator of zero. '
-
-  stats.f_score = hmean(stats.precision, stats.recall)
-  if math.isnan(stats.f_score):
-    stats.error_message += 'f-score is NaN'
-
-  return stats
-
-
-def tokenize_finding(finding):
-  """Turn the finding into multiple findings split by whitespace."""
-  tokenized = set()
-  tokens = finding.text.split()
-  cursor = 0
-  # Note that finding.start and finding.end refer to the location in the overall
-  # text, but finding.text is just the text for this finding.
-  for token in tokens:
-    start = finding.text.find(token, cursor)
-    cursor = end = start + len(token)
-    tokenized.add(Finding(
-        finding.category, start + finding.start, end + finding.start, token,
-        finding.context_start, finding.raw_context))
-  return tokenized
-
-
-def tokenize_set(findings):
-  """Split the findings on whitespace and return the tokenized set."""
-  all_tokenized = set()
-  findings = list(findings)
-  for f in findings:
-    for tokenized in tokenize_finding(f):
-      # Add to all_tokenized, unless there's already an equivalent finding (i.e.
-      # one with the same start and end).
-      found = False
-      for existing_finding in all_tokenized:
-        if (existing_finding.start == tokenized.start and
-            existing_finding.end == tokenized.end):
-          found = True
-      if not found:
-        all_tokenized.add(tokenized)
-
-  return all_tokenized
-
-
-def deserialize_individual_result(record_id, serialized_stats,
-                                  per_type_serialized_stats):
-  ir = IndividualResult()
-  ir.record_id = record_id
-  ir.stats.ParseFromString(serialized_stats)
-  for type_name, stats in per_type_serialized_stats.iteritems():
-    ir.per_type[type_name].ParseFromString(stats)
-
-  return ir
-
-
-class IndividualResult(object):
-
-  def __init__(self):
-    self.record_id = ''
-    self.stats = results_pb2.Stats()
-    self.per_type = collections.defaultdict(results_pb2.Stats)
-    self.debug_info = []
-
-  # Dataflow's pickling gets confused if it has to deal with raw protos, so we
-  # serialize them here.
-  def __reduce__(self):
-    per_type_serialized = {}
-    for type_name, stats in self.per_type.iteritems():
-      per_type_serialized[type_name] = stats.SerializeToString()
-    return (deserialize_individual_result,
-            (self.record_id, self.stats.SerializeToString(),
-             per_type_serialized))
-
-
-def count_matches(findings, golden_findings, record_id, strict):
-  """Calculate the true/false positive/negatives for the given findings.
+def compare_bq_row(row, types_to_ignore):
+  """Compare the findings in the given BigQuery row.
 
   Args:
-    findings: List of Finding objects to count matches for.
-    golden_findings: List of Finding objects to compare against.
-    record_id: str; Unique identifier for this set of findings.
-    strict: bool; If True, use strict matching, i.e. it's only a match if the
-      type matches and the text is exactly the same. Otherwise, two findings
-      match if they have at least one character in common, and type is ignored.
-
+    row: BQ row: Map containing (findings_record_id, findings_xml, golden_xml).
+    types_to_ignore: List of strings representing types that should be excluded
+      from the analysis.
   Returns:
-    An IndividualResult object containing the counts and derived stats.
+    (IndividualResult, IndividualResult), where the first is for strict entity
+    matching and the second is for binary token matching.
+  Raises:
+    Exception: If golden_xml doesn't exist.
   """
-  result = IndividualResult()
-  result.record_id = record_id
-  for finding in findings:
-    if ((strict and finding not in golden_findings) or
-        (not strict and not finding.intersects(golden_findings))):
-      result.stats.false_positives += 1
-      result.debug_info.append(
-          {'record_id': record_id, 'error_type': 'false_positive',
-           'text': finding.text, 'context': finding.context(),
-           'info_type': finding.category})
-      result.per_type[finding.category].false_positives += 1
+  findings = _get_findings_from_text(row['findings_xml'], types_to_ignore)
+  if 'golden_xml' not in row or row['golden_xml'] is None:
+    raise Exception(
+        'No golden found for record %s.' % row['findings_record_id'])
+  golden_findings = _get_findings_from_text(row['golden_xml'], types_to_ignore)
+  record_id = row['findings_record_id']
 
-  for golden_finding in golden_findings:
-    if ((strict and golden_finding in findings) or
-        (not strict and golden_finding.intersects(findings))):
-      result.stats.true_positives += 1
-      result.per_type[golden_finding.category].true_positives += 1
-    else:
-      result.debug_info.append(
-          {'record_id': record_id, 'error_type': 'false_negative',
-           'text': golden_finding.text, 'context': golden_finding.context(),
-           'info_type': golden_finding.category})
-      result.per_type[golden_finding.category].false_negatives += 1
-      result.stats.false_negatives += 1
-
-  calculate_stats(result.stats)
-  return result
+  return compare_findings(findings, golden_findings, record_id)
 
 
 def compare(filename, golden_dir, types_to_ignore, project):
@@ -282,23 +114,14 @@ def compare(filename, golden_dir, types_to_ignore, project):
   golden_file = gcsutil.GcsFileName.from_path(
       posixpath.join(golden_dir, posixpath.basename(filename.blob)))
 
-  findings = _get_findings(filename, storage_client, types_to_ignore)
-  golden_findings = _get_findings(golden_file, storage_client, types_to_ignore)
+  findings = _get_findings_from_file(filename, storage_client, types_to_ignore)
+  golden_findings = _get_findings_from_file(
+      golden_file, storage_client, types_to_ignore)
   record_id = posixpath.basename(filename.blob)
   if record_id.endswith('.xml'):
     record_id = record_id[:-4]
-  logging.info('Running comparison for record "%s"', record_id)
 
-  strict_entity_results = count_matches(
-      findings, golden_findings, record_id, strict=True)
-
-  # Binary token matching calculations.
-  tokenized_findings = tokenize_set(findings)
-  tokenized_goldens = tokenize_set(golden_findings)
-  binary_token_results = count_matches(
-      tokenized_findings, tokenized_goldens, record_id, strict=False)
-
-  return strict_entity_results, binary_token_results
+  return compare_findings(findings, golden_findings, record_id)
 
 
 class _MacroStats(object):
@@ -320,103 +143,18 @@ class _MacroStats(object):
       return stats
     stats.precision = float(self.precision_sum) / self.count
     stats.recall = float(self.recall_sum) / self.count
-    stats.f_score = hmean(stats.precision, stats.recall)
+    stats.f_score = eval_lib.hmean(stats.precision, stats.recall)
     stats.error_message = self.error_message
     return stats
-
-
-def deserialize_accumulated_results(serialized_micro_stats, macro,
-                                    per_type_serialized_stats):
-  ar = AccumulatedResults()
-  ar.micro.ParseFromString(serialized_micro_stats)
-  ar.macro = macro
-  for type_name, stats in per_type_serialized_stats.iteritems():
-    ar.per_type[type_name].ParseFromString(stats)
-
-  return ar
-
-
-class AccumulatedResults(object):
-  """Accumulates micro and macro averages."""
-
-  def __init__(self):
-    self.micro = results_pb2.Stats()
-    self.macro = _MacroStats()
-    # Map from info type name to Stats pb.
-    self.per_type = collections.defaultdict(results_pb2.Stats)
-
-  # Dataflow's pickling gets confused if it has to deal with raw protos, so we
-  # serialize them here.
-  def __reduce__(self):
-    per_type_serialized = {}
-    for type_name, stats in self.per_type.iteritems():
-      per_type_serialized[type_name] = stats.SerializeToString()
-    return (deserialize_accumulated_results,
-            (self.micro.SerializeToString(), self.macro, per_type_serialized))
-
-  def add_result(self, result):
-    """Add an individual result to the AccumulatedResults.
-
-    Args:
-      result: IndividualResult to add.
-    """
-    self.micro.true_positives += result.stats.true_positives
-    self.micro.false_positives += result.stats.false_positives
-    self.micro.false_negatives += result.stats.false_negatives
-    for info_type, stats in result.per_type.iteritems():
-      self.per_type[info_type].true_positives += stats.true_positives
-      self.per_type[info_type].false_positives += stats.false_positives
-      self.per_type[info_type].false_negatives += stats.false_negatives
-
-    if (math.isnan(result.stats.precision) or
-        math.isnan(result.stats.recall)):
-      self.macro.error_message += 'Ignored results for {0} '.format(
-          result.record_id)
-      logging.warning('Macro average ignoring results for %s', result.record_id)
-    else:
-      self.macro.count += 1
-      self.macro.precision_sum += result.stats.precision
-      self.macro.recall_sum += result.stats.recall
-
-  def per_type_protos(self):
-    """Return the per-type stats as a list of PerTypeStats protos."""
-    protos = []
-    for info_type, stats in sorted(self.per_type.iteritems()):
-      pb = results_pb2.PerTypeStats()
-      pb.info_type_category = info_type
-      pb.stats.CopyFrom(calculate_stats(stats))
-      protos.append(pb)
-    return protos
-
-  def __add__(self, other):
-    new = AccumulatedResults()
-    new.micro.true_positives = (
-        self.micro.true_positives + other.micro.true_positives)
-    new.micro.false_positives = (
-        self.micro.false_positives + other.micro.false_positives)
-    new.micro.false_negatives = (
-        self.micro.false_negatives + other.micro.false_negatives)
-    for info_type, stats in itertools.chain(self.per_type.iteritems(),
-                                            other.per_type.iteritems()):
-      new.per_type[info_type].true_positives += stats.true_positives
-      new.per_type[info_type].false_positives += stats.false_positives
-      new.per_type[info_type].false_negatives += stats.false_negatives
-
-    new.macro.count = self.macro.count + other.macro.count
-    new.macro.precision_sum = (
-        self.macro.precision_sum + other.macro.precision_sum)
-    new.macro.recall_sum = self.macro.recall_sum + other.macro.recall_sum
-    new.macro.error_message = (
-        self.macro.error_message + other.macro.error_message)
-    return new
 
 
 class OverallResults(object):
   """Class to hold and accumulate the summarized results to output."""
 
   def __init__(self):
-    self.strict_entity_matching = AccumulatedResults()
-    self.binary_token_matching = AccumulatedResults()
+    self.strict_entity_matching = eval_lib.AccumulatedResults()
+    self.binary_token_matching = eval_lib.AccumulatedResults()
+    self.is_empty = True
 
   def __add__(self, other):
     new = OverallResults()
@@ -424,12 +162,13 @@ class OverallResults(object):
         self.strict_entity_matching + other.strict_entity_matching)
     new.binary_token_matching = (
         self.binary_token_matching + other.binary_token_matching)
+    new.is_empty = False
     return new
 
   def to_results_proto(self):
     """Convert to results_pb2.Results."""
     results = results_pb2.Results()
-    calculate_stats(self.strict_entity_matching.micro)
+    eval_lib.calculate_stats(self.strict_entity_matching.micro)
     results.strict_entity_matching_results.micro_average_results.CopyFrom(
         self.strict_entity_matching.micro)
     results.strict_entity_matching_results.macro_average_results.CopyFrom(
@@ -437,7 +176,7 @@ class OverallResults(object):
     r = results.strict_entity_matching_results.per_type_micro_average_results
     r.extend(self.strict_entity_matching.per_type_protos())
 
-    calculate_stats(self.binary_token_matching.micro)
+    eval_lib.calculate_stats(self.binary_token_matching.micro)
     results.binary_token_matching_results.micro_average_results.CopyFrom(
         self.binary_token_matching.micro)
     results.binary_token_matching_results.macro_average_results.CopyFrom(
@@ -468,12 +207,14 @@ class CombineResultsFn(beam.CombineFn):
     return overall_results
 
   def extract_output(self, overall_results):
-    if overall_results is None:
+    if overall_results is None or overall_results.is_empty:
       return None
 
     # Dataflow's pickling gets confused if it has to deal with raw protos, so we
     # serialize them explicitly.
-    return overall_results.to_results_proto().SerializeToString()
+    results = overall_results.to_results_proto()
+    logging.info('Aggregate results:\n%s', results)
+    return results.SerializeToString()
 
 
 def write_aggregate_results_to_gcs(results_bytes, results_dir, project):
@@ -481,8 +222,6 @@ def write_aggregate_results_to_gcs(results_bytes, results_dir, project):
   storage_client = storage.Client(project)
   results = results_pb2.Results()
   results.ParseFromString(results_bytes)
-
-  logging.info('Aggregate results:\n%s', results)
 
   filename = gcsutil.GcsFileName.from_path(
       posixpath.join(results_dir, 'aggregate_results.txt'))
@@ -554,25 +293,50 @@ BASE_SCHEMA = (
 
 
 def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
+                 mae_input_query, mae_golden_table,
                  write_per_note_stats_to_gcs, results_table,
                  per_note_results_table, debug_output_table, types_to_ignore,
                  project, pipeline_args):
   """Evaluate the input files against the goldens."""
+  if ((mae_input_pattern is None) == (mae_input_query is None) or
+      (mae_golden_dir is None) == (mae_golden_table is None) or
+      (mae_input_query is None) != (mae_golden_table is None) or
+      (mae_input_pattern is None) != (mae_golden_dir is None)):
+    return ['Must set exactly one of: '
+            '(--mae_input_pattern AND --mae_golden_dir) '
+            'OR (--mae_input_query AND --mae_golden_table).']
+
+  if write_per_note_stats_to_gcs and not results_dir:
+    return ['Must set --results_dir when --write_per_note_stats_to_gcs is set.']
+
   logging.info('Starting evaluation.')
-  filenames = []
-  storage_client = storage.Client(project)
-  for f in gcsutil.find_files(mae_input_pattern, storage_client):
-    if posixpath.dirname(f.string()) != posixpath.dirname(mae_input_pattern):
-      # Ignore subdirectories.
-      continue
-    filenames.append(f)
 
   p = beam.Pipeline(options=PipelineOptions(pipeline_args))
 
-  per_note_results = (p |
-                      beam.Create(filenames) |
-                      beam.Map(compare, mae_golden_dir, types_to_ignore,
-                               project))
+  if mae_input_pattern:
+    filenames = []
+    storage_client = storage.Client(project)
+    for f in gcsutil.find_files(mae_input_pattern, storage_client):
+      if posixpath.dirname(f.string()) != posixpath.dirname(mae_input_pattern):
+        # Ignore subdirectories.
+        continue
+      filenames.append(f)
+
+  per_note_results = None
+  if mae_input_query and mae_golden_table:
+    query_template = ('SELECT findings.record_id, findings.xml, golden.xml '
+                      'FROM ({}) AS findings '
+                      'LEFT JOIN [{}] AS golden '
+                      'ON findings.record_id=golden.record_id')
+    query = query_template.format(mae_input_query, mae_golden_table)
+    per_note_results = (p |
+                        beam.io.Read(beam.io.BigQuerySource(query=query)) |
+                        beam.Map(compare_bq_row, types_to_ignore))
+  else:
+    per_note_results = (p |
+                        beam.Create(filenames) |
+                        beam.Map(compare, mae_golden_dir, types_to_ignore,
+                                 project))
   now = str(_get_utcnow())
   if debug_output_table:
     _ = (per_note_results |
@@ -615,12 +379,17 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
 def add_all_args(parser):
   """Add command-line arguments to the parser."""
   parser.add_argument(
-      '--mae_input_pattern', type=str, required=True,
-      help='GCS directory with MAE files to compare against goldens')
+      '--mae_input_pattern', type=str, required=False,
+      help='GCS directory with MAE files to compare against goldens.')
   parser.add_argument(
-      '--mae_golden_dir', type=str, required=True,
-      help=('GCS directory with "golden" MAE files to use as a baseline for '
-            'comparison.'))
+      '--mae_input_query', type=str, required=False,
+      help='BQ query with MAE XML to compare against goldens.')
+  parser.add_argument(
+      '--mae_golden_dir', type=str, required=False,
+      help='GCS directory with "golden" MAE files to use as a baseline.')
+  parser.add_argument(
+      '--mae_golden_table', type=str, required=False,
+      help='BQ table with "golden" MAE XML to use as a baseline.')
   parser.add_argument('--results_dir', type=str,
                       help='GCS directory to write results to.')
   parser.add_argument('--write_per_note_stats_to_gcs', type=bool, default=False,

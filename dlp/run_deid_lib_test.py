@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for google3.third_party.py.dlp.run_deid_lib."""
+"""Tests for google3.dlp.run_deid_lib."""
 
 from __future__ import absolute_import
 
@@ -20,7 +20,6 @@ import json
 import os
 import unittest
 
-from apache_beam.io import iobase
 from apiclient import errors
 from common import beam_testutil
 from common import testutil
@@ -31,19 +30,6 @@ from mock import Mock
 from mock import patch
 
 TESTDATA_DIR = 'dlp/'
-
-
-class FakeSource(iobase.BoundedSource):
-
-  def __init__(self):
-    self._records = []
-
-  def get_range_tracker(self, unused_a, unused_b):
-    return None
-
-  def read(self, unused_range_tracker):
-    for record in self._records:
-      yield record
 
 
 class ResultStorage(object):
@@ -123,7 +109,7 @@ class RunDeidLibTest(unittest.TestCase):
       return beam_testutil.FakeSink(table_name)
     mock_bq_sink_fn.side_effect = make_sink
 
-    mock_bq_source_fn.return_value = FakeSource()
+    mock_bq_source_fn.return_value = beam_testutil.FakeSource()
     mock_bq_source_fn.return_value._records = [
         {'first_name': 'Boaty', 'last_name': 'McBoatface',
          'note': 'text and PID and MORE PID',
@@ -164,7 +150,7 @@ class RunDeidLibTest(unittest.TestCase):
     storage_client_fn = lambda x: testutil.FakeStorageClient()
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
-        'gs://mae-bucket/mae-dir', deid_cfg, 'InspectPhiTask',
+        'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg, 'InspectPhiTask',
         'fake-credentials', 'project', storage_client_fn, bq_client, None,
         'dlp', batch_size=1, pipeline_args=None)
 
@@ -180,6 +166,8 @@ class RunDeidLibTest(unittest.TestCase):
       contents = f.read()
       self.assertEqual(testutil.get_gcs_file('mae-bucket/mae-dir/111-1.xml'),
                        contents)
+      self.assertEqual(beam_testutil.get_table('mae_tbl'),
+                       [{'record_id': '111-1', 'xml': contents}])
     with open(
         os.path.join(TESTDATA_DIR, 'mae_testdata', 'sample.dtd')) as f:
       contents = f.read()
@@ -204,7 +192,7 @@ class RunDeidLibTest(unittest.TestCase):
       return beam_testutil.FakeSink(table_name)
     mock_bq_sink_fn.side_effect = make_sink
 
-    mock_bq_source_fn.return_value = FakeSource()
+    mock_bq_source_fn.return_value = beam_testutil.FakeSource()
     mock_bq_source_fn.return_value._records = [
         {'first_name': 'Boaty', 'last_name': 'McBoatface',
          'note': 'text and PID and MORE PID',
@@ -247,10 +235,11 @@ class RunDeidLibTest(unittest.TestCase):
 
     storage_client_fn = lambda x: testutil.FakeStorageClient()
     mae_dir = ''  # Not compatible with multi-column.
+    mae_table = ''  # Not compatible with multi-column.
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
-        mae_dir, deid_cfg_file, 'InspectPhiTask', 'fake-credentials', 'project',
-        storage_client_fn, bq_client, None, 'dlp', batch_size=1,
+        mae_dir, mae_table, deid_cfg_file, 'InspectPhiTask', 'fake-credentials',
+        'project', storage_client_fn, bq_client, None, 'dlp', batch_size=1,
         pipeline_args=None)
 
     request_body = {}
@@ -277,7 +266,7 @@ class RunDeidLibTest(unittest.TestCase):
       return beam_testutil.FakeSink(table_name)
     mock_bq_sink_fn.side_effect = make_sink
 
-    mock_bq_source_fn.return_value = FakeSource()
+    mock_bq_source_fn.return_value = beam_testutil.FakeSource()
     mock_bq_source_fn.return_value._records = [
         {'first_name': 'Boaty', 'last_name': 'McBoatface',
          'note': 'text and PID and MORE PID',
@@ -323,7 +312,7 @@ class RunDeidLibTest(unittest.TestCase):
     storage_client_fn = lambda x: testutil.FakeStorageClient()
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
-        'gs://mae-bucket/mae-dir', deid_cfg_file, 'InspectPhiTask',
+        'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_file, 'InspectPhiTask',
         'fake-credentials', 'project', storage_client_fn, bq_client, None,
         'dlp', batch_size=2, pipeline_args=None)
 
@@ -353,7 +342,7 @@ class RunDeidLibTest(unittest.TestCase):
       return beam_testutil.FakeSink(table_name)
     mock_bq_sink_fn.side_effect = make_sink
 
-    mock_bq_source_fn.return_value = FakeSource()
+    mock_bq_source_fn.return_value = beam_testutil.FakeSource()
     mock_bq_source_fn.return_value._records = [
         {'first_name': 'Boaty', 'last_name': 'McBoatface',
          'note': 'text and PID and MORE PID',
@@ -419,7 +408,7 @@ class RunDeidLibTest(unittest.TestCase):
     storage_client_fn = lambda x: testutil.FakeStorageClient()
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
-        'gs://mae-bucket/mae-dir', deid_cfg_file, 'InspectPhiTask',
+        'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_file, 'InspectPhiTask',
         'fake-credentials', 'project', storage_client_fn, bq_client, None,
         'dlp', batch_size=2, pipeline_args=None)
 

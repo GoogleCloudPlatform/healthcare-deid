@@ -45,6 +45,13 @@ This tool uses the Apache Beam SDK for Python, which requires Python version
 python --version
 ```
 
+The code for the pipeline is available for download from GitHub:
+
+```shell
+git clone https://github.com/GoogleCloudPlatform/healthcare-deid.git && \
+cd healthcare-deid
+```
+
 Running the pipeline requires having the Google Python API client, Google Cloud
 Storage client, and Python Apache Beam client installed. Note that as of
 2017-10-27, there is an incompatibility with the latest version of the
@@ -56,26 +63,21 @@ source env/bin/activate
 pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-bigquery google-auth-httplib2 google-cloud-storage six==1.10.0
 ```
 
-The code for the pipeline itself is available for download from GitHub:
-
-```shell
-git clone https://github.com/GoogleCloudPlatform/healthcare-deid.git &&
-cd healthcare-deid
-```
-
 ## Running the pipeline
 
-The pipeline takes as input a table with 3 columns: patient_id, record_number,
-and note. You may also provide a query that generates matching row
-(--input_query), but note that this causes the data to be stored in a temporary
-table which does not have data locality guarantees.
+The pipeline takes as input a table with the columns specified in the "columns"
+section of the config file. You may also provide a query that generates matching
+rows (using --input_query), but note that this causes the data to be stored in a
+temporary table which does not have data locality guarantees.
 
-The output is written to 2 separate tables:
+The output is written to several places, depending on which flags are provided:
 
-* deid_table holds the deidentified notes from the deidentify call to the DLP
+* --deid_table holds the deidentified notes from the deidentify call to the DLP
   API.
-* findings_table holds the findings of PII identified from calling inspect on
+* --findings_table holds the findings of PII identified from calling inspect on
   the DLP API.
+* --mae_dir holds the findings in MAE format in GCS.
+* --mae_table holds the findings in MAE format in BigQuery.
 
 Example usage:
 
@@ -109,33 +111,34 @@ and manually specify the number of workers, use:
 ## Config file
 
 --deid_config_file specifies a json file (example in [sample_deid_config.json](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/sample_deid_config.json))
-that contains an object with five fields:
+that contains an object with the following fields:
 
-1. `columns` specifies two types of columns - those that should be passed
-   through to the output table as-is (`passThrough`) and those that should be
-   processed by the DLP API and have the results written to the output table
-   (`inspect`).
+1. `columns` (**required**) specifies two types of columns:
 
-   If not specified in the config, `passThrough` contains 'patient_id' and
-   'record_number', and `inspect` contains 'note'. See
-   sample_multi_column_deid_config.json for an example.
+  * `inspect` (**required**): Columns that should be processed by the DLP API
+    and have the results written to the output table.
+  * `passThrough`: Columns that should be passed through to the output table
+    as-is.
 
    If a `inspect` column specifies an `infoTypesToDeId` list, only those
-   infoTypes will be used for deidentification.
+   infoTypes will be used for deidentification for that column.
 
 1. `transformations` is a list of [InfoTypeTransformation](https://cloud.google.com/dlp/docs/reference/rest/v2beta2/organizations.deidentifyTemplates#DeidentifyTemplate.InfoTypeTransformation)
-that will be sent to the DLP API's content.deidentify method.
+   that will be sent to the DLP API's content.deidentify() method.
 
-1. `infoTypeCategories` is a list of tags to use in the MAE output and the
-   infoTypes from the deidConfig that should be mapped to those tags. Each entry in
-   the list has a name, and a list of infoTypes, e.g.:
+1. `keyColumns` is a list of columns that form a key uniquely identifying each
+    row (used when generating MAE output).
 
-  ```none
-  {
-    "name": "FIRST_NAME",
-    "infoTypes": ["US_FEMALE_NAME", "US_MALE_NAME"]
-  }
-  ```
+1. `tagCategories` is a list of tags to use in the MAE output and the infoTypes
+   from the deidConfig that should be mapped to those tags. Each entry in the
+   list has a name, and a list of infoTypes, e.g.:
+
+    ```none
+    {
+      "name": "FIRST_NAME",
+      "infoTypes": ["US_FEMALE_NAME", "US_MALE_NAME"]
+    }
+    ```
 
 1. `perRowTypes` is a list of columnName/infoTypeName pairs. For each inspect()
    and deid() call, for each row, we take the value from the specified column
@@ -149,13 +152,20 @@ that will be sent to the DLP API's content.deidentify method.
 ## MAE Format
 
 If you specify the --mae_dir flag, the pipeline will write xml files to a GCS
-directory. The files will be named using the structure
-"`patientid`-`recordnumber`.xml", with a DTD file in "classification.dtd".
-Examples are available under [mae_testdata](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/mae_testdata)
+directory. The files will be named using the structure "`record_id`.xml", where
+`record_id` is a hyphen-separated list of fields specified in the config in
+"keyColumns". A DTD file is written to "classification.dtd". Examples are
+available under [mae_testdata](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/mae_testdata)
 in `sample.xml` and `sample.dtd`.
 
-Note that MAE output cannot be used if you specify `columns` in your config
-file.
+Similarly, if you specify --mae_table a table will be created with two columns:
+
+1. `record_id`: Hyphen-separated list of fields specified in "keyColumns" in
+   the config (e.g. "1234-1" if patient_id and record_number are specified).
+1. `xml`: The MAE-compatible xml detailing the findings for that note.
+
+Note that MAE output cannot be used if you specify multiple columns in your
+config file in `columns.inspect`.
 
 ### DTD Format
 
