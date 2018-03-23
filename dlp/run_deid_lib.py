@@ -475,9 +475,10 @@ def _generate_deid_config(all_transformations, target_columns):
 
   # All inspect columns that don't specify types are included together here and
   # will use all the transformations listed in the config.
-  field_transformations.append(
-      {'fields': [{'name': f} for f in fields_using_all_info_types],
-       'infoTypeTransformations': {'transformations': all_transformations}})
+  if fields_using_all_info_types:
+    field_transformations.append(
+        {'fields': [{'name': f} for f in fields_using_all_info_types],
+         'infoTypeTransformations': {'transformations': all_transformations}})
 
   return {'recordTransformations':
           {'fieldTransformations': field_transformations}}
