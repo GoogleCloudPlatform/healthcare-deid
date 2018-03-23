@@ -55,7 +55,7 @@ Storage client, and Python Apache Beam client installed. Note that as of
 ```shell
 virtualenv env
 source env/bin/activate
-pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-storage six==1.10.0
+pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-bigquery google-auth-httplib2 google-cloud-storage six==1.10.0
 ```
 
 ## Running the pipeline
