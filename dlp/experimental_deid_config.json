@@ -1,4 +1,13 @@
 {
+  "columns": {
+    "passThrough": [
+      {"name": "patient_id", "type": "stringValue"},
+      {"name": "record_number", "type": "integerValue"}
+    ],
+    "inspect": [
+      {"name": "note", "type": "stringValue"}
+    ]
+  },
   "transformations": [
     {
       "infoTypes": [
@@ -17,7 +26,8 @@
       }
     }
   ],
-  "infoTypeCategories": [
+  "keyColumns": ["patient_id", "record_number"],
+  "tagCategories": [
     {
       "name": "NAME",
       "infoTypes": ["PERSON_NAME"]

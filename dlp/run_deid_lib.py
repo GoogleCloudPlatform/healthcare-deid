@@ -527,6 +527,9 @@ def generate_configs(config_text, input_query=None, input_table=None,
       info_types.add(t['name'])
   inspect_config['infoTypes'] = [{'name': t} for t in info_types]
 
+  if 'experimentalConfig' in cfg:
+    inspect_config['alphiConfig'] = {'model': cfg['experimentalConfig']}
+
   if 'columns' not in cfg:
     raise Exception('Required section "columns" not specified in config.')
   if 'inspect' not in cfg['columns']:
@@ -772,7 +775,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   mae_data = None
   if mae_dir or mae_table:
     if not mae_key_columns:
-      raise Exception('"mae.keyColumns" not specified in the config. Please '
+      raise Exception('"keyColumns" not specified in the config. Please '
                       'specify a list of columns that will be used as the '
                       'primary key for identifying MAE results.')
     mae_data = (inspect_data | 'generate_mae' >> beam.Map(
