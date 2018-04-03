@@ -119,15 +119,16 @@ class RunDeidLibTest(unittest.TestCase):
         'rows': [{'values': [{'stringValue': 'deid_resp_val'}]}],
         'headers': [{'name': 'note'}]
     }}}
+    empty_locations = [{'recordLocation': {'tableLocation': {}}}]
     findings = {'findings': [
         {'location': {'codepointRange': {'start': '17', 'end': '25'},
-                      'tableLocation': {}},
+                      'contentLocations': empty_locations},
          'infoType': {'name': 'PHONE_NUMBER'}},
         {'location': {'codepointRange': {'start': '9', 'end': '12'},
-                      'tableLocation': {}},
+                      'contentLocations': empty_locations},
          'infoType': {'name': 'US_CENSUS_NAME'}},
         {'location': {'codepointRange': {'start': '9', 'end': '12'},
-                      'tableLocation': {}},
+                      'contentLocations': empty_locations},
          'infoType': {'name': 'US_MALE_NAME'}}]}
     inspect_response = {'result': findings}
     fake_content = Mock()
@@ -203,15 +204,17 @@ class RunDeidLibTest(unittest.TestCase):
                              {'stringValue': 'myname'}]}],
         'headers': [{'name': 'note'}, {'name': 'last_name'}]
     }}}
+    empty_locations = [{'recordLocation': {'tableLocation': {}}}]
     findings = {'findings': [
         {'location': {'codepointRange': {'start': '17', 'end': '25'},
-                      'tableLocation': {}},
+                      'contentLocations': empty_locations},
          'infoType': {'name': 'PHONE_NUMBER'}},
         {'location': {'codepointRange': {'start': '9', 'end': '12'},
-                      'tableLocation': {}},
+                      'contentLocations': empty_locations},
          'infoType': {'name': 'US_CENSUS_NAME'}},
         {'location': {'codepointRange': {'start': '9', 'end': '12'},
-                      'tableLocation': {'rowIndex': '0'}},
+                      'contentLocations': [{'recordLocation': {
+                          'tableLocation': {'rowIndex': '0'}}}]},
          'infoType': {'name': 'US_MALE_NAME'}}]}
     inspect_response = {'result': findings}
     fake_content = Mock()
@@ -283,10 +286,12 @@ class RunDeidLibTest(unittest.TestCase):
     }}}
     findings = {'findings': [
         {'location': {'codepointRange': {'start': '9', 'end': '12'},
-                      'tableLocation': {'rowIndex': '0'}},
+                      'contentLocations': [{'recordLocation': {
+                          'tableLocation': {'rowIndex': '0'}}}]},
          'infoType': {'name': 'PHONE_NUMBER'}},
         {'location': {'codepointRange': {'start': '17', 'end': '25'},
-                      'tableLocation': {'rowIndex': '1'}},
+                      'contentLocations': [{'recordLocation': {
+                          'tableLocation': {'rowIndex': '1'}}}]},
          'infoType': {'name': 'US_MALE_NAME'}}]}
     inspect_response = {'result': findings}
     fake_content = Mock()
@@ -359,13 +364,14 @@ class RunDeidLibTest(unittest.TestCase):
                              sval('note2 redacted'), sval('222'), sval('2')]}],
         'headers': DEID_HEADERS}}}
 
+    empty_locations = [{'recordLocation': {'tableLocation': {}}}]
     findings1 = {'findings': [
         {'location': {'codepointRange': {'start': '9', 'end': '12'},
-                      'tableLocation': {}},
+                      'contentLocations': empty_locations},
          'infoType': {'name': 'PHONE_NUMBER'}}]}
     findings2 = {'findings': [
         {'location': {'codepointRange': {'start': '17', 'end': '25'},
-                      'tableLocation': {}},
+                      'contentLocations': empty_locations},
          'infoType': {'name': 'US_MALE_NAME'}}]}
     inspect_response_truncated = {'result': {'findingsTruncated': 'True'}}
     inspect_responses = [inspect_response_truncated, {'result': findings1},

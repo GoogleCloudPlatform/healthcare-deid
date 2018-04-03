@@ -195,9 +195,9 @@ def deid(rows, credentials, project, deid_config, inspect_config,
     credentials: oauth2client.Credentials for authentication with the DLP API.
     project: The project to send the request for.
     deid_config: DeidentifyConfig map, as defined in the DLP API:
-      https://goo.gl/e8DBmm#DeidentifyTemplate.DeidentifyConfig
+      https://goo.gl/WrvsDB#DeidentifyTemplate.DeidentifyConfig
     inspect_config: inspectConfig map, as defined in the DLP API:
-      https://cloud.google.com/dlp/docs/reference/rest/v2beta2/InspectConfig
+      https://cloud.google.com/dlp/docs/reference/rest/v2/InspectConfig
     pass_through_columns: List of strings; columns that should not be sent to
       the DLP API, but should still be included in the final output.
     target_columns: List of strings; columns that should be sent to the DLP API,
@@ -213,7 +213,7 @@ def deid(rows, credentials, project, deid_config, inspect_config,
      - 'item': The 'item' element of the result from the DLP API call.
      - An entry for each pass-through column.
   """
-  dlp = discovery.build(dlp_api_name, 'v2beta2', credentials=credentials)
+  dlp = discovery.build(dlp_api_name, 'v2', credentials=credentials)
   projects = dlp.projects()
   content = projects.content()
 
@@ -241,7 +241,6 @@ def deid(rows, credentials, project, deid_config, inspect_config,
     return _rebatch_deid(rows, credentials, project, deid_config,
                          inspect_config, pass_through_columns, target_columns,
                          per_row_types, dlp_api_name)
-
   if 'error' in response:
     raise Exception('Deidentify() failed: {}'.format(response['error']))
 
@@ -274,9 +273,13 @@ def _rebatch_inspect(
     if 'findings' in retval['result']:
       for finding in retval['result']['findings']:
         index = 0
-        if 'rowIndex' in finding['location']['tableLocation']:
-          index = int(finding['location']['tableLocation']['rowIndex'])
-        finding['location']['tableLocation']['rowIndex'] = index + half_size
+        # More complicated types, like an image within a pdf, may have multiple
+        # contentLocations, but our simple table will only have one.
+        content_location = finding['location']['contentLocations'][0]
+        table_location = content_location['recordLocation']['tableLocation']
+        if 'rowIndex' in table_location:
+          index = int(table_location['rowIndex'])
+        table_location['rowIndex'] = index + half_size
     ret_a.append(retval)
   return ret_a
 
@@ -290,7 +293,7 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
     credentials: oauth2client.Credentials for authentication with the DLP API.
     project: The project to send the request for.
     inspect_config: inspectConfig map, as defined in the DLP API:
-      https://cloud.google.com/dlp/docs/reference/rest/v2beta2/InspectConfig
+      https://cloud.google.com/dlp/docs/reference/rest/v2/InspectConfig
     pass_through_columns: List of strings; columns that should not be sent to
       the DLP API, but should still be included in the final output.
     target_columns: List of strings; columns that should be sent to the DLP API,
@@ -307,7 +310,7 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
      - 'original_note': The original note, to be used in generating MAE output.
      - An entry for each pass-through column.
   """
-  dlp = discovery.build(dlp_api_name, 'v2beta2', credentials=credentials)
+  dlp = discovery.build(dlp_api_name, 'v2', credentials=credentials)
   projects = dlp.projects()
   content = projects.content()
 
@@ -351,10 +354,14 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
     retvals.append(ret)
   if 'findings' in response['result']:
     for finding in response['result']['findings']:
-      if not finding['location']['tableLocation']:
+        # More complicated types, like an image within a pdf, may have multiple
+        # contentLocations, but our simple table will only have one.
+      content_location = finding['location']['contentLocations'][0]
+      table_location = content_location['recordLocation']['tableLocation']
+      if not table_location:
         retvals[0]['result']['findings'].append(finding)
       else:
-        index = int(finding['location']['tableLocation']['rowIndex'])
+        index = int(table_location['rowIndex'])
         retvals[index]['result']['findings'].append(finding)
 
   return retvals
@@ -443,7 +450,7 @@ def _generate_deid_config(all_transformations, target_columns):
   """Generate the deidentifyConfig for the deidentify API calls.
 
   The generated config contains a RecordTransformations.FieldTransformation
-  (https://goo.gl/e8DBmm#DeidentifyTemplate.FieldTransformation) for each column
+  (https://goo.gl/WrvsDB#DeidentifyTemplate.FieldTransformation) for each column
   in target_columns, where the transformation is the list of all the
   transformations in all_transformations which match the infoTypes specified for
   that column, or all the transformations if no infoTypes are specified.
