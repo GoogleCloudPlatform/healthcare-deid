@@ -761,7 +761,9 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if findings_table:
     # Write the inspect result to BigQuery. We don't process the result, even
     # if it's for multiple columns.
-    schema = _generate_schema(pass_through_columns, []) + ',findings:STRING'
+    schema = _generate_schema(pass_through_columns, [])
+    schema = schema + ',' if schema else schema
+    schema += 'findings:STRING'
     _ = (inspect_data
          | 'format_findings' >> beam.Map(format_findings, pass_through_columns)
          | 'write_findings' >> beam.io.Write(beam.io.BigQuerySink(
