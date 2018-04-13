@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import
 
+from functools import partial
 import json
 import os
 import unittest
@@ -99,15 +100,23 @@ def sval(x):
   return {'stringValue': x}
 
 
+_TABLE_TO_SCHEMA = {
+    'findings_tbl': 'patient_id:STRING, record_number:INTEGER, findings:STRING',
+    'mae_tbl': 'record_id:STRING,xml:STRING',
+    'deid_tbl': 'patient_id:STRING, record_number:INTEGER, note:STRING'}
+
+
 class RunDeidLibTest(unittest.TestCase):
+
+  def make_sink(self, table_to_schema, table_name, schema, write_disposition):  # pylint: disable=unused-argument
+    self.assertEqual(table_to_schema[table_name], schema)
+    return beam_testutil.FakeSink(table_name)
 
   @patch('apiclient.discovery.build')
   @patch('apache_beam.io.BigQuerySink')
   @patch('apache_beam.io.BigQuerySource')
   def testE2E(self, mock_bq_source_fn, mock_bq_sink_fn, mock_build_fn):
-    def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
-      return beam_testutil.FakeSink(table_name)
-    mock_bq_sink_fn.side_effect = make_sink
+    mock_bq_sink_fn.side_effect = partial(self.make_sink, _TABLE_TO_SCHEMA)
 
     mock_bq_source_fn.return_value = beam_testutil.FakeSource()
     mock_bq_source_fn.return_value._records = [
@@ -189,9 +198,9 @@ class RunDeidLibTest(unittest.TestCase):
   @patch('apache_beam.io.BigQuerySource')
   def testMultiColumnDeid(self, mock_bq_source_fn, mock_bq_sink_fn,
                           mock_build_fn):
-    def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
-      return beam_testutil.FakeSink(table_name)
-    mock_bq_sink_fn.side_effect = make_sink
+    table_to_schema = _TABLE_TO_SCHEMA.copy()
+    table_to_schema['deid_tbl'] += ', last_name:STRING'
+    mock_bq_sink_fn.side_effect = partial(self.make_sink, table_to_schema)
 
     mock_bq_source_fn.return_value = beam_testutil.FakeSource()
     mock_bq_source_fn.return_value._records = [
@@ -265,9 +274,7 @@ class RunDeidLibTest(unittest.TestCase):
   @patch('apache_beam.io.BigQuerySink')
   @patch('apache_beam.io.BigQuerySource')
   def testBatchDeid(self, mock_bq_source_fn, mock_bq_sink_fn, mock_build_fn):
-    def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
-      return beam_testutil.FakeSink(table_name)
-    mock_bq_sink_fn.side_effect = make_sink
+    mock_bq_sink_fn.side_effect = partial(self.make_sink, _TABLE_TO_SCHEMA)
 
     mock_bq_source_fn.return_value = beam_testutil.FakeSource()
     mock_bq_source_fn.return_value._records = [
@@ -343,9 +350,7 @@ class RunDeidLibTest(unittest.TestCase):
   @patch('apache_beam.io.BigQuerySink')
   @patch('apache_beam.io.BigQuerySource')
   def testReBatchDeid(self, mock_bq_source_fn, mock_bq_sink_fn, mock_build_fn):
-    def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
-      return beam_testutil.FakeSink(table_name)
-    mock_bq_sink_fn.side_effect = make_sink
+    mock_bq_sink_fn.side_effect = partial(self.make_sink, _TABLE_TO_SCHEMA)
 
     mock_bq_source_fn.return_value = beam_testutil.FakeSource()
     mock_bq_source_fn.return_value._records = [
@@ -431,6 +436,20 @@ class RunDeidLibTest(unittest.TestCase):
                      testutil.get_gcs_file('mae-bucket/mae-dir/111-1.xml'))
     self.assertEqual(EXPECTED_MAE2,
                      testutil.get_gcs_file('mae-bucket/mae-dir/222-2.xml'))
+
+  def testGenerateSchema(self):
+    self.assertEqual(
+        'str:STRING, int:INTEGER, int2:INTEGER, float:FLOAT, bool:BOOLEAN',
+        run_deid_lib._generate_schema([
+            {'name': 'str', 'type': 'stringValue'},
+            {'name': 'int', 'type': 'integerValue'},
+            {'name': 'int2', 'type': 'integerValue'},
+            {'name': 'float', 'type': 'floatValue'},
+            {'name': 'bool', 'type': 'booleanValue'}]))
+
+    self.assertEqual(
+        'str:STRING',
+        run_deid_lib._generate_schema([{'name': 'str', 'type': 'stringValue'}]))
 
   def testGenerateDeidConfig(self):
     all_transformations = [

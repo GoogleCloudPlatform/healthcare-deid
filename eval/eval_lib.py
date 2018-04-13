@@ -241,6 +241,117 @@ def strict_entity_compare(findings, golden_findings, record_id):
   return count_matches(findings, golden_findings, record_id, strict=True)
 
 
+def _map_index_to_type(findings, ignore_nonalphanumerics):
+  result = {}
+  for finding in findings:
+    for index in xrange(finding.start, finding.end):
+      if (not ignore_nonalphanumerics) or finding.text[index -
+                                                       finding.start].isalnum():
+        result[index] = finding.category
+  return result
+
+
+def characters_count_compare(findings,
+                             golden_findings,
+                             record_id,
+                             ignore_nonalphanumerics=False):
+  """Calculates the characters count true/false positives/negatives.
+
+  Args:
+    findings: List of Finding objects to count matches for.
+    golden_findings: List of Finding objects to compare against.
+    record_id: str; Unique identifier for this set of findings.
+    ignore_nonalphanumerics: bool; If True, ignores any non-alphanumeric
+      character in the calculation. Otherwise, every single character is
+      included in the calculation.
+
+  Returns:
+    An IndividualResult object containing the counts and derived stats.
+  """
+  result = IndividualResult()
+  result.record_id = record_id
+  findings_map = _map_index_to_type(findings, ignore_nonalphanumerics)
+  golden_findings_map = _map_index_to_type(golden_findings,
+                                           ignore_nonalphanumerics)
+  all_indices = set(findings_map.iterkeys()).union(
+      golden_findings_map.iterkeys())
+  for index in all_indices:
+    category = findings_map.get(index, None)
+    golden_category = golden_findings_map.get(index, None)
+    if category == golden_category:
+      result.per_type[category].true_positives += 1
+      result.stats.true_positives += 1
+    elif category is not None:
+      result.per_type[category].false_positives += 1
+      if golden_category is not None:
+        result.per_type[golden_category].false_negatives += 1
+        result.stats.true_positives += 1
+      else:
+        result.stats.false_positives += 1
+    else:
+      result.per_type[golden_category].false_negatives += 1
+      result.stats.false_negatives += 1
+  calculate_stats(result.stats)
+  return result
+
+
+def _count_intervals(findings_indices, golden_findings_indices, stats):
+  """Counts the intervals of the different types into stats."""
+  max_char = max(itertools.chain(findings_indices, golden_findings_indices))
+  for (finding_in_char, golden_finding_in_char), _ in itertools.groupby(
+      (i in findings_indices, i in golden_findings_indices)
+      for i in xrange(max_char + 1)):
+    if golden_finding_in_char:
+      if finding_in_char:
+        stats.true_positives += 1
+      else:
+        stats.false_negatives += 1
+    elif finding_in_char:
+      stats.false_positives += 1
+
+
+def intervals_count_compare(findings, golden_findings, record_id):
+  """Calculates the intervals count true/false positives/negatives.
+
+  An interval is defined as a maximal string of consecutive characters that all
+  have the same classification as each other in the findings, and have the same
+  classification as each other in the goldens. The finding classification may
+  not match the golden classification - this determines whether the interval is
+  a true/false positive/negative.
+
+  Args:
+    findings: List of Finding objects to count matches for.
+    golden_findings: List of Finding objects to compare against.
+    record_id: str; Unique identifier for this set of findings.
+
+  Returns:
+    An IndividualResult object containing the counts and derived stats.
+  """
+  result = IndividualResult()
+  result.record_id = record_id
+  findings_map = _map_index_to_type(findings, False)
+  golden_findings_map = _map_index_to_type(golden_findings, False)
+  all_categories = {
+      finding.category for finding in itertools.chain(findings, golden_findings)
+  }
+  for category in all_categories:
+    findings_indices = {
+        index for index, finding_category in findings_map.iteritems()
+        if finding_category == category
+    }
+    golden_findings_indices = {
+        index for index, finding_category in golden_findings_map.iteritems()
+        if finding_category == category
+    }
+    _count_intervals(findings_indices, golden_findings_indices,
+                     result.per_type[category])
+  _count_intervals(
+      set(findings_map.iterkeys()), set(golden_findings_map.iterkeys()),
+      result.stats)
+  calculate_stats(result.stats)
+  return result
+
+
 class _MacroStats(object):
 
   def __init__(self):
@@ -349,4 +460,3 @@ class AccumulatedResults(object):
     new.macro.error_message = (
         self.macro.error_message + other.macro.error_message)
     return new
-

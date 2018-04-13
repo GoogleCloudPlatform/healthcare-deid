@@ -178,6 +178,170 @@ class EvalLibTest(unittest.TestCase):
     expected_per_type = {'TYPE_A': a, 'TYPE_B': b, 'TYPE_C': c}
     self.assertEqual(expected_per_type, result.per_type)
 
+  def testCharactersCount(self):
+    finding = eval_lib.Finding
+    findings = set([
+        finding('NAME', 0, 9, 'The quick'),
+        finding('ID', 10, 19, 'brown fox'),
+        finding('ORGANIZATION', 20, 30, 'jumps over')
+    ])
+    golden_findings = set([
+        finding('NAME', 0, 9, 'The quick'),
+        finding('AGE', 10, 19, 'brown fox'),
+        finding('DATE', 35, 43, 'lazy dog')
+    ])
+    result = eval_lib.characters_count_compare(
+        findings, golden_findings, record_id='', ignore_nonalphanumerics=False)
+
+    expected_typeless = results_pb2.Stats()
+    expected_typeless.true_positives = 18
+    expected_typeless.false_positives = 10
+    expected_typeless.false_negatives = 8
+    expected_typeless.precision = 0.642857
+    expected_typeless.recall = 0.692308
+    expected_typeless.f_score = 0.666667
+    self.assertEqual(
+        normalize_floats(expected_typeless), normalize_floats(result.stats))
+
+    expected_name = results_pb2.Stats()
+    expected_name.true_positives = 9
+    expected_id = results_pb2.Stats()
+    expected_id.false_positives = 9
+    expected_age = results_pb2.Stats()
+    expected_age.false_negatives = 9
+    expected_org = results_pb2.Stats()
+    expected_org.false_positives = 10
+    expected_date = results_pb2.Stats()
+    expected_date.false_negatives = 8
+    expected_per_type = {
+        'NAME': expected_name,
+        'ID': expected_id,
+        'AGE': expected_age,
+        'ORGANIZATION': expected_org,
+        'DATE': expected_date
+    }
+    self.assertEqual(expected_per_type, result.per_type)
+
+  def testCharactersCountIgnoringNonAlphanumerics(self):
+    finding = eval_lib.Finding
+    findings = set([
+        finding('NAME', 0, 9, 'The quick'),
+        finding('ID', 10, 19, 'brown fox'),
+        finding('ORGANIZATION', 20, 30, 'jumps over')
+    ])
+    golden_findings = set([
+        finding('NAME', 0, 9, 'The quick'),
+        finding('AGE', 10, 19, 'brown fox'),
+        finding('DATE', 35, 43, 'lazy dog')
+    ])
+    result = eval_lib.characters_count_compare(
+        findings, golden_findings, record_id='', ignore_nonalphanumerics=True)
+
+    expected_typeless = results_pb2.Stats()
+    expected_typeless.true_positives = 16
+    expected_typeless.false_positives = 9
+    expected_typeless.false_negatives = 7
+    expected_typeless.precision = 0.64
+    expected_typeless.recall = 0.695652
+    expected_typeless.f_score = 0.666667
+    self.assertEqual(
+        normalize_floats(expected_typeless), normalize_floats(result.stats))
+
+    expected_name = results_pb2.Stats()
+    expected_name.true_positives = 8
+    expected_id = results_pb2.Stats()
+    expected_id.false_positives = 8
+    expected_age = results_pb2.Stats()
+    expected_age.false_negatives = 8
+    expected_org = results_pb2.Stats()
+    expected_org.false_positives = 9
+    expected_date = results_pb2.Stats()
+    expected_date.false_negatives = 7
+    expected_per_type = {
+        'NAME': expected_name,
+        'ID': expected_id,
+        'AGE': expected_age,
+        'ORGANIZATION': expected_org,
+        'DATE': expected_date
+    }
+    self.assertEqual(expected_per_type, result.per_type)
+
+  def testIntervalsCount(self):
+    finding = eval_lib.Finding
+    findings = set([
+        finding('NAME', 0, 9, 'The quick'),
+        finding('ID', 10, 19, 'brown fox'),
+        finding('ORGANIZATION', 20, 30, 'jumps over')
+    ])
+    golden_findings = set([
+        finding('NAME', 0, 9, 'The quick'),
+        finding('AGE', 10, 19, 'brown fox'),
+        finding('DATE', 35, 43, 'lazy dog')
+    ])
+    result = eval_lib.intervals_count_compare(
+        findings, golden_findings, record_id='')
+
+    expected_typeless = results_pb2.Stats()
+    expected_typeless.true_positives = 2
+    expected_typeless.false_positives = 1
+    expected_typeless.false_negatives = 1
+    expected_typeless.precision = 0.666667
+    expected_typeless.recall = 0.666667
+    expected_typeless.f_score = 0.666667
+    self.assertEqual(
+        normalize_floats(expected_typeless), normalize_floats(result.stats))
+
+    expected_name = results_pb2.Stats()
+    expected_name.true_positives = 1
+    expected_id = results_pb2.Stats()
+    expected_id.false_positives = 1
+    expected_age = results_pb2.Stats()
+    expected_age.false_negatives = 1
+    expected_org = results_pb2.Stats()
+    expected_org.false_positives = 1
+    expected_date = results_pb2.Stats()
+    expected_date.false_negatives = 1
+    expected_per_type = {
+        'NAME': expected_name,
+        'ID': expected_id,
+        'AGE': expected_age,
+        'ORGANIZATION': expected_org,
+        'DATE': expected_date
+    }
+    self.assertEqual(expected_per_type, result.per_type)
+
+  def testIntervalsCountNotExactMatch(self):
+    finding = eval_lib.Finding
+    findings = set([
+        finding('NAME', 1, 8, 'he quic'),  # Golden contains.
+        finding('NAME', 10, 19, 'brown fox'),  # Golden contained.
+        finding('NAME', 20, 30, 'jumps over')  # Intersection.
+    ])
+    golden_findings = set([
+        finding('NAME', 0, 9, 'The quick'),  # Golden contains.
+        finding('NAME', 11, 18, 'rown fo'),  # Golden contained.
+        finding('NAME', 26, 34, 'over the')  # Intersection.
+    ])
+    result = eval_lib.intervals_count_compare(
+        findings, golden_findings, record_id='')
+
+    expected_typeless = results_pb2.Stats()
+    expected_typeless.true_positives = 3
+    expected_typeless.false_positives = 3
+    expected_typeless.false_negatives = 3
+    expected_typeless.precision = 0.5
+    expected_typeless.recall = 0.5
+    expected_typeless.f_score = 0.5
+    self.assertEqual(
+        normalize_floats(expected_typeless), normalize_floats(result.stats))
+
+    expected_name = results_pb2.Stats()
+    expected_name.true_positives = 3
+    expected_name.false_positives = 3
+    expected_name.false_negatives = 3
+    expected_per_type = {'NAME': expected_name}
+    self.assertEqual(expected_per_type, result.per_type)
+
   def testInvalidSpans(self):
     with self.assertRaises(Exception):
       eval_lib.Finding.from_tag('invalid', '4~2', 'full text')

@@ -149,6 +149,12 @@ that contains an object with the following fields:
    given column(s). These are then passed to every inspect() and deid() request
    as custom infoTypes.
 
+1. `customInfoTypes` is a list of [CustomInfoType](https://cloud.google.com/dlp/docs/reference/rest/v2/InspectConfig#CustomInfoType)
+   objects to pass to the DLP API. You can read more about CustomInfoTypes
+   [here](https://cloud.google.com/dlp/docs/creating-custom-infotypes), and
+   there is an example of a custom info type for detecting medical record
+   numbers available in [custom_mrn_deid_config.json](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/custom_mrn_deid_config.json).
+
 ## MAE Format
 
 If you specify the --mae_dir flag, the pipeline will write xml files to a GCS

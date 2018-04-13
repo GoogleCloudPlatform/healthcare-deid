@@ -25,7 +25,6 @@ from __future__ import absolute_import
 
 import collections
 import copy
-import itertools
 import json
 import logging
 import posixpath
@@ -38,6 +37,9 @@ from apiclient import discovery
 from apiclient import errors
 from common import mae
 import httplib2
+
+
+CUSTOM_INFO_TYPES = 'customInfoTypes'
 
 
 def _get_index(column_name, headers):
@@ -129,8 +131,8 @@ def _per_row_inspect_config(inspect_config, per_row_types, rows):
     return inspect_config
 
   inspect_config = copy.deepcopy(inspect_config)
-  if 'customInfoTypes' not in inspect_config:
-    inspect_config['customInfoTypes'] = []
+  if CUSTOM_INFO_TYPES not in inspect_config:
+    inspect_config[CUSTOM_INFO_TYPES] = []
 
   for per_row_type in per_row_types:
     column_name = per_row_type['columnName']
@@ -140,7 +142,7 @@ def _per_row_inspect_config(inspect_config, per_row_types, rows):
         raise Exception(
             'customInfoType column "{}" not found.'.format(column_name))
       words.add(row[column_name])
-    inspect_config['customInfoTypes'].append({
+    inspect_config[CUSTOM_INFO_TYPES].append({
         'infoType': {'name': per_row_type['infoTypeName']},
         'dictionary': {'wordList': {'words': list(words)}}
     })
@@ -213,7 +215,8 @@ def deid(rows, credentials, project, deid_config, inspect_config,
      - 'item': The 'item' element of the result from the DLP API call.
      - An entry for each pass-through column.
   """
-  dlp = discovery.build(dlp_api_name, 'v2', credentials=credentials)
+  dlp = discovery.build(dlp_api_name, 'v2', credentials=credentials,
+                        cache_discovery=False)
   projects = dlp.projects()
   content = projects.content()
 
@@ -310,7 +313,8 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
      - 'original_note': The original note, to be used in generating MAE output.
      - An entry for each pass-through column.
   """
-  dlp = discovery.build(dlp_api_name, 'v2', credentials=credentials)
+  dlp = discovery.build(dlp_api_name, 'v2', credentials=credentials,
+                        cache_discovery=False)
   projects = dlp.projects()
   content = projects.content()
 
@@ -405,15 +409,14 @@ def write_dtd(storage_client_fn, project, mae_dir, mae_tag_categories,
   blob.upload_from_string(dtd_contents)
 
 
-def _is_custom_type(type_name, per_row_types, per_dataset_types):
+def _is_custom_type(type_name, per_row_types, inspect_config):
   for custom_type in per_row_types:
     if custom_type['infoTypeName'] == type_name:
       return True
-  for per_dataset_type in per_dataset_types:
-    if 'infoTypes' in per_dataset_type:
-      for custom_type in per_dataset_type['infoTypes']:
-        if custom_type['infoTypeName'] == type_name:
-          return True
+  if CUSTOM_INFO_TYPES in inspect_config:
+    for custom_type in inspect_config[CUSTOM_INFO_TYPES]:
+      if custom_type['infoType']['name'] == type_name:
+        return True
   return False
 
 
@@ -511,8 +514,13 @@ def generate_configs(config_text, input_query=None, input_table=None,
   if 'perDatasetTypes' in cfg:
     per_dataset_types = cfg['perDatasetTypes']
     if bq_client:
-      inspect_config['customInfoTypes'] = _load_per_dataset_types(
+      inspect_config[CUSTOM_INFO_TYPES] = _load_per_dataset_types(
           per_dataset_types, input_query, input_table, bq_client, bq_config_fn)
+  if CUSTOM_INFO_TYPES in cfg:
+    if CUSTOM_INFO_TYPES not in inspect_config:
+      inspect_config[CUSTOM_INFO_TYPES] = []
+    for custom_info_type in cfg[CUSTOM_INFO_TYPES]:
+      inspect_config[CUSTOM_INFO_TYPES].append(custom_info_type)
 
   # Generate an inspectConfig based on all the infoTypes listed in the deid
   # config's transformations.
@@ -522,7 +530,7 @@ def generate_configs(config_text, input_query=None, input_table=None,
     for t in transformation['infoTypes']:
       # Don't include custom infoTypes in the inspect config or the DLP API
       # will complain.
-      if _is_custom_type(t['name'], per_row_types, per_dataset_types):
+      if _is_custom_type(t['name'], per_row_types, inspect_config):
         continue
       info_types.add(t['name'])
   inspect_config['infoTypes'] = [{'name': t} for t in info_types]
@@ -647,12 +655,12 @@ def _convert_old_row(row, field_indexes):
   return new_row
 
 
-def _generate_schema(pass_through_columns, target_columns):
+def _generate_schema(columns):
   """Generate a BigQuery schema with the configured columns."""
   m = {'stringValue': 'STRING', 'integerValue': 'INTEGER',
        'floatValue': 'FLOAT', 'booleanValue': 'BOOLEAN'}
   segments = []
-  for col in itertools.chain(pass_through_columns, target_columns):
+  for col in columns:
     segments.append('{0}:{1}'.format(col['name'], m[col['type']]))
   return ', '.join(segments)
 
@@ -761,9 +769,8 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if findings_table:
     # Write the inspect result to BigQuery. We don't process the result, even
     # if it's for multiple columns.
-    schema = _generate_schema(pass_through_columns, [])
-    schema = schema + ',' if schema else schema
-    schema += 'findings:STRING'
+    schema = _generate_schema(pass_through_columns +
+                              [{'name': 'findings', 'type': 'stringValue'}])
     _ = (inspect_data
          | 'format_findings' >> beam.Map(format_findings, pass_through_columns)
          | 'write_findings' >> beam.io.Write(beam.io.BigQuerySink(
@@ -795,7 +802,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
     if not deid_config_file:
       return ['Must set --deid_config_file when --deid_table is set.']
     # Call deidentify and write the result to BigQuery.
-    schema = _generate_schema(pass_through_columns, target_columns)
+    schema = _generate_schema(pass_through_columns + target_columns)
     _ = (reads
          | 'deid' >> beam.FlatMap(
              deid,
