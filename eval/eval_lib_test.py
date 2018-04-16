@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 
 import math
+import pickle
 import unittest
 
 from eval import eval_lib
@@ -201,7 +202,17 @@ class EvalLibTest(unittest.TestCase):
     expected_typeless.recall = 0.692308
     expected_typeless.f_score = 0.666667
     self.assertEqual(
-        normalize_floats(expected_typeless), normalize_floats(result.stats))
+        normalize_floats(expected_typeless), normalize_floats(result.typeless))
+
+    expected_total = results_pb2.Stats()
+    expected_total.true_positives = 9
+    expected_total.false_positives = 19
+    expected_total.false_negatives = 17
+    expected_total.precision = 0.321429
+    expected_total.recall = 0.346154
+    expected_total.f_score = 0.333333
+    self.assertEqual(
+        normalize_floats(expected_total), normalize_floats(result.stats))
 
     expected_name = results_pb2.Stats()
     expected_name.true_positives = 9
@@ -245,7 +256,17 @@ class EvalLibTest(unittest.TestCase):
     expected_typeless.recall = 0.695652
     expected_typeless.f_score = 0.666667
     self.assertEqual(
-        normalize_floats(expected_typeless), normalize_floats(result.stats))
+        normalize_floats(expected_typeless), normalize_floats(result.typeless))
+
+    expected_total = results_pb2.Stats()
+    expected_total.true_positives = 8
+    expected_total.false_positives = 17
+    expected_total.false_negatives = 15
+    expected_total.precision = 0.32
+    expected_total.recall = 0.347826
+    expected_total.f_score = 0.333333
+    self.assertEqual(
+        normalize_floats(expected_total), normalize_floats(result.stats))
 
     expected_name = results_pb2.Stats()
     expected_name.true_positives = 8
@@ -289,7 +310,17 @@ class EvalLibTest(unittest.TestCase):
     expected_typeless.recall = 0.666667
     expected_typeless.f_score = 0.666667
     self.assertEqual(
-        normalize_floats(expected_typeless), normalize_floats(result.stats))
+        normalize_floats(expected_typeless), normalize_floats(result.typeless))
+
+    expected_total = results_pb2.Stats()
+    expected_total.true_positives = 1
+    expected_total.false_positives = 2
+    expected_total.false_negatives = 2
+    expected_total.precision = 0.333333
+    expected_total.recall = 0.333333
+    expected_total.f_score = 0.333333
+    self.assertEqual(
+        normalize_floats(expected_total), normalize_floats(result.stats))
 
     expected_name = results_pb2.Stats()
     expected_name.true_positives = 1
@@ -333,7 +364,17 @@ class EvalLibTest(unittest.TestCase):
     expected_typeless.recall = 0.5
     expected_typeless.f_score = 0.5
     self.assertEqual(
-        normalize_floats(expected_typeless), normalize_floats(result.stats))
+        normalize_floats(expected_typeless), normalize_floats(result.typeless))
+
+    expected_total = results_pb2.Stats()
+    expected_total.true_positives = 3
+    expected_total.false_positives = 3
+    expected_total.false_negatives = 3
+    expected_total.precision = 0.5
+    expected_total.recall = 0.5
+    expected_total.f_score = 0.5
+    self.assertEqual(
+        normalize_floats(expected_total), normalize_floats(result.stats))
 
     expected_name = results_pb2.Stats()
     expected_name.true_positives = 3
@@ -347,6 +388,177 @@ class EvalLibTest(unittest.TestCase):
       eval_lib.Finding.from_tag('invalid', '4~2', 'full text')
     with self.assertRaises(Exception):
       eval_lib.Finding.from_tag('out_of_range', '0~10', 'full text')
+
+  def testPickle(self):
+    individual_result = eval_lib.IndividualResult()
+    individual_result.stats.true_positives = 30
+    individual_result.stats.false_positives = 20
+    individual_result.stats.false_negatives = 10
+    individual_result.per_type['TypeA'].true_positives = 9
+    individual_result.per_type['TypeA'].false_positives = 8
+    individual_result.per_type['TypeA'].false_negatives = 7
+    individual_result.per_type['TypeB'].true_positives = 6
+    individual_result.per_type['TypeB'].false_positives = 5
+    individual_result.per_type['TypeB'].false_negatives = 4
+    individual_result.typeless.true_positives = 15
+    individual_result.typeless.false_positives = 14
+    individual_result.typeless.false_negatives = 13
+    eval_lib.calculate_stats(individual_result.stats)
+    eval_lib.calculate_stats(individual_result.typeless)
+
+    pickled = pickle.dumps(individual_result)
+    unpickled = pickle.loads(pickled)
+    self.assertEqual(individual_result.record_id, unpickled.record_id)
+    self.assertEqual(individual_result.per_type, unpickled.per_type)
+    self.assertEqual(
+        normalize_floats(individual_result.stats),
+        normalize_floats(unpickled.stats))
+    self.assertEqual(
+        normalize_floats(individual_result.typeless),
+        normalize_floats(unpickled.typeless))
+    self.assertEqual(individual_result.debug_info, unpickled.debug_info)
+
+    ar = eval_lib.AccumulatedResults()
+    ar.add_result(individual_result)
+
+    pickled = pickle.dumps(ar)
+    unpickled = pickle.loads(pickled)
+
+    self.assertEqual(ar.micro, unpickled.micro)
+    self.assertEqual(ar.macro.calculate_stats(),
+                     unpickled.macro.calculate_stats())
+    self.assertEqual(ar.per_type, unpickled.per_type)
+    self.assertEqual(ar.typeless_micro, unpickled.typeless_micro)
+    self.assertEqual(ar.typeless_macro.calculate_stats(),
+                     unpickled.typeless_macro.calculate_stats())
+
+  def testAccumulateResults(self):
+    result1 = eval_lib.IndividualResult()
+    result1.stats.true_positives = 30
+    result1.stats.false_positives = 20
+    result1.stats.false_negatives = 10
+    result1.per_type['TypeA'].true_positives = 9
+    result1.per_type['TypeA'].false_positives = 8
+    result1.per_type['TypeA'].false_negatives = 7
+    result1.per_type['TypeB'].true_positives = 6
+    result1.per_type['TypeB'].false_positives = 5
+    result1.per_type['TypeB'].false_negatives = 4
+    result1.typeless.true_positives = 15
+    result1.typeless.false_positives = 14
+    result1.typeless.false_negatives = 13
+    eval_lib.calculate_stats(result1.stats)
+    eval_lib.calculate_stats(result1.typeless)
+
+    result2 = eval_lib.IndividualResult()
+    result2.stats.true_positives = 3
+    result2.stats.false_positives = 2
+    result2.stats.false_negatives = 1
+    result2.per_type['TypeA'].true_positives = 19
+    result2.per_type['TypeA'].false_positives = 18
+    result2.per_type['TypeA'].false_negatives = 17
+    result2.per_type['TypeB'].true_positives = 16
+    result2.per_type['TypeB'].false_positives = 15
+    result2.per_type['TypeB'].false_negatives = 14
+    result2.typeless.true_positives = 13
+    result2.typeless.false_positives = 12
+    result2.typeless.false_negatives = 11
+    eval_lib.calculate_stats(result2.stats)
+    eval_lib.calculate_stats(result2.typeless)
+
+    ar = eval_lib.AccumulatedResults()
+    ar.add_result(result1)
+    ar.add_result(result2)
+
+    expected_micro = results_pb2.Stats()
+    expected_micro.true_positives = 33
+    expected_micro.false_positives = 22
+    expected_micro.false_negatives = 11
+    self.assertEqual(expected_micro, ar.micro)
+
+    expected_macro = results_pb2.Stats()
+    expected_macro.precision = 0.6
+    expected_macro.recall = 0.75
+    expected_macro.f_score = 0.666667
+    self.assertEqual(
+        normalize_floats(expected_macro),
+        normalize_floats(ar.macro.calculate_stats()))
+
+    expected_type_a = results_pb2.Stats()
+    expected_type_a.true_positives = 28
+    expected_type_a.false_positives = 26
+    expected_type_a.false_negatives = 24
+    expected_type_b = results_pb2.Stats()
+    expected_type_b.true_positives = 22
+    expected_type_b.false_positives = 20
+    expected_type_b.false_negatives = 18
+    expected_per_type = {'TypeA': expected_type_a, 'TypeB': expected_type_b}
+    self.assertEqual(expected_per_type, ar.per_type)
+
+    expected_typeless_micro = results_pb2.Stats()
+    expected_typeless_micro.true_positives = 28
+    expected_typeless_micro.false_positives = 26
+    expected_typeless_micro.false_negatives = 24
+    self.assertEqual(expected_typeless_micro, ar.typeless_micro)
+
+    expected_typeless_macro = results_pb2.Stats()
+    expected_typeless_macro.precision = 0.518621
+    expected_typeless_macro.recall = 0.53869
+    expected_typeless_macro.f_score = 0.528465
+    self.assertEqual(
+        normalize_floats(expected_typeless_macro),
+        normalize_floats(ar.typeless_macro.calculate_stats()))
+
+  def testAccumulatedResultsAdd(self):
+    result1 = eval_lib.IndividualResult()
+    result1.stats.true_positives = 30
+    result1.stats.false_positives = 20
+    result1.stats.false_negatives = 10
+    result1.per_type['TypeA'].true_positives = 9
+    result1.per_type['TypeA'].false_positives = 8
+    result1.per_type['TypeA'].false_negatives = 7
+    result1.per_type['TypeB'].true_positives = 6
+    result1.per_type['TypeB'].false_positives = 5
+    result1.per_type['TypeB'].false_negatives = 4
+    result1.typeless.true_positives = 15
+    result1.typeless.false_positives = 14
+    result1.typeless.false_negatives = 13
+    eval_lib.calculate_stats(result1.stats)
+    eval_lib.calculate_stats(result1.typeless)
+
+    result2 = eval_lib.IndividualResult()
+    result2.stats.true_positives = 3
+    result2.stats.false_positives = 2
+    result2.stats.false_negatives = 1
+    result2.per_type['TypeA'].true_positives = 19
+    result2.per_type['TypeA'].false_positives = 18
+    result2.per_type['TypeA'].false_negatives = 17
+    result2.per_type['TypeB'].true_positives = 16
+    result2.per_type['TypeB'].false_positives = 15
+    result2.per_type['TypeB'].false_negatives = 14
+    result2.typeless.true_positives = 13
+    result2.typeless.false_positives = 12
+    result2.typeless.false_negatives = 11
+    eval_lib.calculate_stats(result2.stats)
+    eval_lib.calculate_stats(result2.typeless)
+
+    ar = eval_lib.AccumulatedResults()
+    ar.add_result(result1)
+    ar.add_result(result2)
+
+    ar1 = eval_lib.AccumulatedResults()
+    ar1.add_result(result1)
+
+    ar2 = eval_lib.AccumulatedResults()
+    ar2.add_result(result2)
+
+    ar_sum = ar1 + ar2
+    self.assertEqual(ar.micro, ar_sum.micro)
+    self.assertEqual(ar.macro.calculate_stats(), ar_sum.macro.calculate_stats())
+    self.assertEqual(ar.per_type, ar_sum.per_type)
+    self.assertEqual(ar.typeless_micro, ar_sum.typeless_micro)
+    self.assertEqual(ar.typeless_macro.calculate_stats(),
+                     ar_sum.typeless_macro.calculate_stats())
+
 
 if __name__ == '__main__':
   unittest.main()

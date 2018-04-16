@@ -158,22 +158,26 @@ def tokenize_set(findings):
 
 
 def _deserialize_individual_result(record_id, serialized_stats,
-                                   per_type_serialized_stats):
+                                   per_type_serialized_stats,
+                                   serialized_typeless):
   ir = IndividualResult()
   ir.record_id = record_id
   ir.stats.ParseFromString(serialized_stats)
   for type_name, stats in per_type_serialized_stats.iteritems():
     ir.per_type[type_name].ParseFromString(stats)
+  ir.typeless.ParseFromString(serialized_typeless)
 
   return ir
 
 
 class IndividualResult(object):
+  """An individual record results."""
 
   def __init__(self):
     self.record_id = ''
     self.stats = results_pb2.Stats()
     self.per_type = collections.defaultdict(results_pb2.Stats)
+    self.typeless = results_pb2.Stats()
     self.debug_info = []
 
   # Dataflow's pickling gets confused if it has to deal with raw protos, so we
@@ -182,9 +186,10 @@ class IndividualResult(object):
     per_type_serialized = {}
     for type_name, stats in self.per_type.iteritems():
       per_type_serialized[type_name] = stats.SerializeToString()
-    return (_deserialize_individual_result,
-            (self.record_id, self.stats.SerializeToString(),
-             per_type_serialized))
+    return (_deserialize_individual_result, (self.record_id,
+                                             self.stats.SerializeToString(),
+                                             per_type_serialized,
+                                             self.typeless.SerializeToString()))
 
 
 def count_matches(findings, golden_findings, record_id, strict):
@@ -241,6 +246,14 @@ def strict_entity_compare(findings, golden_findings, record_id):
   return count_matches(findings, golden_findings, record_id, strict=True)
 
 
+def _sum_typed_stats(per_type, stats):
+  """Sums the true/false positives/negatives of each category into stats."""
+  for category_stats in per_type.itervalues():
+    stats.true_positives += category_stats.true_positives
+    stats.false_positives += category_stats.false_positives
+    stats.false_negatives += category_stats.false_negatives
+
+
 def _map_index_to_type(findings, ignore_nonalphanumerics):
   result = {}
   for finding in findings:
@@ -280,18 +293,20 @@ def characters_count_compare(findings,
     golden_category = golden_findings_map.get(index, None)
     if category == golden_category:
       result.per_type[category].true_positives += 1
-      result.stats.true_positives += 1
+      result.typeless.true_positives += 1
     elif category is not None:
       result.per_type[category].false_positives += 1
       if golden_category is not None:
         result.per_type[golden_category].false_negatives += 1
-        result.stats.true_positives += 1
+        result.typeless.true_positives += 1
       else:
-        result.stats.false_positives += 1
+        result.typeless.false_positives += 1
     else:
       result.per_type[golden_category].false_negatives += 1
-      result.stats.false_negatives += 1
+      result.typeless.false_negatives += 1
+  _sum_typed_stats(result.per_type, result.stats)
   calculate_stats(result.stats)
+  calculate_stats(result.typeless)
   return result
 
 
@@ -347,8 +362,10 @@ def intervals_count_compare(findings, golden_findings, record_id):
                      result.per_type[category])
   _count_intervals(
       set(findings_map.iterkeys()), set(golden_findings_map.iterkeys()),
-      result.stats)
+      result.typeless)
+  _sum_typed_stats(result.per_type, result.stats)
   calculate_stats(result.stats)
+  calculate_stats(result.typeless)
   return result
 
 
@@ -376,13 +393,16 @@ class _MacroStats(object):
     return stats
 
 
-def _deserialize_accumulated_results(serialized_micro_stats, macro,
-                                     per_type_serialized_stats):
+def _deserialize_accumulated_results(
+    serialized_micro_stats, macro, per_type_serialized_stats,
+    serialized_typeless_micro_stats, typeless_macro):
   ar = AccumulatedResults()
   ar.micro.ParseFromString(serialized_micro_stats)
   ar.macro = macro
   for type_name, stats in per_type_serialized_stats.iteritems():
     ar.per_type[type_name].ParseFromString(stats)
+  ar.typeless_micro.ParseFromString(serialized_typeless_micro_stats)
+  ar.typeless_macro = typeless_macro
 
   return ar
 
@@ -395,6 +415,8 @@ class AccumulatedResults(object):
     self.macro = _MacroStats()
     # Map from info type name to Stats pb.
     self.per_type = collections.defaultdict(results_pb2.Stats)
+    self.typeless_micro = results_pb2.Stats()
+    self.typeless_macro = _MacroStats()
 
   # Dataflow's pickling gets confused if it has to deal with raw protos, so we
   # serialize them here.
@@ -403,7 +425,8 @@ class AccumulatedResults(object):
     for type_name, stats in self.per_type.iteritems():
       per_type_serialized[type_name] = stats.SerializeToString()
     return (_deserialize_accumulated_results,
-            (self.micro.SerializeToString(), self.macro, per_type_serialized))
+            (self.micro.SerializeToString(), self.macro, per_type_serialized,
+             self.typeless_micro.SerializeToString(), self.typeless_macro))
 
   def add_result(self, result):
     """Add an individual result to the AccumulatedResults.
@@ -418,6 +441,9 @@ class AccumulatedResults(object):
       self.per_type[info_type].true_positives += stats.true_positives
       self.per_type[info_type].false_positives += stats.false_positives
       self.per_type[info_type].false_negatives += stats.false_negatives
+    self.typeless_micro.true_positives += result.typeless.true_positives
+    self.typeless_micro.false_positives += result.typeless.false_positives
+    self.typeless_micro.false_negatives += result.typeless.false_negatives
 
     if (math.isnan(result.stats.precision) or
         math.isnan(result.stats.recall)):
@@ -428,6 +454,17 @@ class AccumulatedResults(object):
       self.macro.count += 1
       self.macro.precision_sum += result.stats.precision
       self.macro.recall_sum += result.stats.recall
+
+    if (math.isnan(result.typeless.precision) or
+        math.isnan(result.typeless.recall)):
+      self.typeless_macro.error_message += 'Ignored results for {0} '.format(
+          result.record_id)
+      logging.warning('Typeless macro average ignoring results for %s',
+                      result.record_id)
+    else:
+      self.typeless_macro.count += 1
+      self.typeless_macro.precision_sum += result.typeless.precision
+      self.typeless_macro.recall_sum += result.typeless.recall
 
   def per_type_protos(self):
     """Return the per-type stats as a list of PerTypeStats protos."""
@@ -459,4 +496,24 @@ class AccumulatedResults(object):
     new.macro.recall_sum = self.macro.recall_sum + other.macro.recall_sum
     new.macro.error_message = (
         self.macro.error_message + other.macro.error_message)
+
+    new.typeless_micro.true_positives = (
+        self.typeless_micro.true_positives +
+        other.typeless_micro.true_positives)
+    new.typeless_micro.false_positives = (
+        self.typeless_micro.false_positives +
+        other.typeless_micro.false_positives)
+    new.typeless_micro.false_negatives = (
+        self.typeless_micro.false_negatives +
+        other.typeless_micro.false_negatives)
+
+    new.typeless_macro.count = (
+        self.typeless_macro.count + other.typeless_macro.count)
+    new.typeless_macro.precision_sum = (
+        self.typeless_macro.precision_sum + other.typeless_macro.precision_sum)
+    new.typeless_macro.recall_sum = (
+        self.typeless_macro.recall_sum + other.typeless_macro.recall_sum)
+    new.typeless_macro.error_message = (
+        self.typeless_macro.error_message + other.typeless_macro.error_message)
+
     return new
