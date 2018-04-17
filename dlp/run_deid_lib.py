@@ -102,7 +102,7 @@ def _request_with_retry(fn, num_retries=5):
 
 
 def get_deid_text(deid_response, pass_through_columns, target_columns):
-  """Get the de-id'd text from the deid() API call response."""
+  """Get the de-id'd text from the deidentify() API call response."""
   # Sample response for a request with a table as input:
   # {'item': {'table': {
   #      'headers': [{'name': 'note'}, {'name': 'first_name'}],
@@ -420,8 +420,8 @@ def _is_custom_type(type_name, per_row_types, inspect_config):
   return False
 
 
-def _find_transformation(all_transformations, target_info_type):
-  for transformation in all_transformations:
+def _find_transformation(info_type_transformations, target_info_type):
+  for transformation in info_type_transformations:
     for info_type in transformation['infoTypes']:
       if info_type['name'] == target_info_type:
         return transformation
@@ -430,7 +430,7 @@ def _find_transformation(all_transformations, target_info_type):
                   target_info_type)
 
 
-def _get_transforms_for_types(all_transformations, info_types):
+def _get_transforms_for_types(info_type_transformations, info_types):
   """Get the transformations that apply to the given types."""
   included_types = set()
   transforms = []
@@ -438,7 +438,7 @@ def _get_transforms_for_types(all_transformations, info_types):
     if info_type in included_types:
       continue
     transformation = copy.deepcopy(
-        _find_transformation(all_transformations, info_type))
+        _find_transformation(info_type_transformations, info_type))
     # Remove all non-specified infoTypes from the transformation.
     transformation['infoTypes'] = [
         it for it in transformation['infoTypes'] if it['name'] in info_types]
@@ -449,46 +449,60 @@ def _get_transforms_for_types(all_transformations, info_types):
   return transforms
 
 
-def _generate_deid_config(all_transformations, target_columns):
+def _generate_deid_config(info_type_transformations, target_columns,
+                          config_field_transformations):
   """Generate the deidentifyConfig for the deidentify API calls.
 
   The generated config contains a RecordTransformations.FieldTransformation
   (https://goo.gl/WrvsDB#DeidentifyTemplate.FieldTransformation) for each column
   in target_columns, where the transformation is the list of all the
-  transformations in all_transformations which match the infoTypes specified for
-  that column, or all the transformations if no infoTypes are specified.
+  transformations in info_type_transformations which match the infoTypes
+  specified for that column, or all the transformations if no infoTypes are
+  specified.
 
   Args:
-    all_transformations: The "transformations" list from the config file.
+    info_type_transformations: The "infoTypeTransformations" list from the
+      config.
     target_columns: The "columns.inspect" list from the config file.
+    config_field_transformations: The "fieldTransformations" list from the
+      config.
 
   Returns:
     A DeidentifyConfig.
   """
-  if not all_transformations:
+  if not info_type_transformations:
     return {}
 
-  field_transformations = []
-  fields_using_all_info_types = []
+  # Include all the field transformations in the config, then add field
+  # transformations containing the relevant infoType transformations for each
+  # target column.
+  field_transformations = list(config_field_transformations)
+  fields_using_all_info_types = set()
   for col in target_columns:
     if 'infoTypesToDeId' not in col:
-      fields_using_all_info_types.append(col['name'])
+      fields_using_all_info_types.add(col['name'])
       continue
 
     info_type_transforms = []
     info_type_transforms = _get_transforms_for_types(
-        all_transformations, col['infoTypesToDeId'])
+        info_type_transformations, col['infoTypesToDeId'])
 
     field_transformations.append(
         {'fields': [{'name': col['name']}],
          'infoTypeTransformations': {'transformations': info_type_transforms}})
+
+  # Columns which have a fieldTransformation specified in the config should not
+  # have any other transformations applied to them.
+  for transform in config_field_transformations:
+    fields_using_all_info_types -= set([f['name'] for f in transform['fields']])
 
   # All inspect columns that don't specify types are included together here and
   # will use all the transformations listed in the config.
   if fields_using_all_info_types:
     field_transformations.append(
         {'fields': [{'name': f} for f in fields_using_all_info_types],
-         'infoTypeTransformations': {'transformations': all_transformations}})
+         'infoTypeTransformations': {'transformations':
+                                     info_type_transformations}})
 
   return {'recordTransformations':
           {'fieldTransformations': field_transformations}}
@@ -499,12 +513,12 @@ def generate_configs(config_text, input_query=None, input_table=None,
   """Generate DLP API configs based on the input config file."""
   mae_tag_categories = {}
   per_row_types = []
-  mae_key_columns = []
+  key_columns = []
   cfg = json.loads(config_text, object_pairs_hook=collections.OrderedDict)
   if 'tagCategories' in cfg:
     mae_tag_categories = cfg['tagCategories']
   if 'keyColumns' in cfg:
-    mae_key_columns = cfg['keyColumns']
+    key_columns = cfg['keyColumns']
 
   if 'perRowTypes' in cfg:
     per_row_types = cfg['perRowTypes']
@@ -524,9 +538,14 @@ def generate_configs(config_text, input_query=None, input_table=None,
 
   # Generate an inspectConfig based on all the infoTypes listed in the deid
   # config's transformations.
-  transformations = cfg['transformations'] if 'transformations' in cfg else []
+  field_transformations = []
+  if 'fieldTransformations' in cfg:
+    field_transformations = cfg['fieldTransformations']
+  info_type_transformations = []
+  if 'infoTypeTransformations' in cfg:
+    info_type_transformations = cfg['infoTypeTransformations']
   info_types = set()
-  for transformation in transformations:
+  for transformation in info_type_transformations:
     for t in transformation['infoTypes']:
       # Don't include custom infoTypes in the inspect config or the DLP API
       # will complain.
@@ -548,11 +567,16 @@ def generate_configs(config_text, input_query=None, input_table=None,
   pass_through_columns = []
   if 'passThrough' in cfg['columns']:
     pass_through_columns = cfg['columns']['passThrough']
+  field_transform_columns = []
+  if 'fieldTransform' in cfg['columns']:
+    field_transform_columns = cfg['columns']['fieldTransform']
 
-  deid_config = _generate_deid_config(transformations, target_columns)
+  deid_config = _generate_deid_config(info_type_transformations, target_columns,
+                                      field_transformations)
 
-  return (inspect_config, deid_config, mae_tag_categories, mae_key_columns,
-          per_row_types, pass_through_columns, target_columns)
+  return (inspect_config, deid_config, mae_tag_categories, key_columns,
+          per_row_types, pass_through_columns, target_columns,
+          field_transform_columns)
 
 
 def _load_per_dataset_types(per_dataset_cfg, input_query, input_table,
@@ -741,16 +765,17 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if deid_config_file:
     with open(deid_config_file) as f:
       config_text = f.read()
-  (inspect_config, deid_config, mae_tag_categories, mae_key_columns,
-   per_row_types, pass_through_columns, target_columns) = generate_configs(
-       config_text, input_query, input_table, bq_client, bq_config_fn)
+  (inspect_config, deid_config, mae_tag_categories, key_columns, per_row_types,
+   pass_through_columns, target_columns, field_transform_columns) = (
+       generate_configs(config_text, input_query, input_table, bq_client,
+                        bq_config_fn))
 
   if len(target_columns) > 1 and (mae_dir or mae_table):
     raise Exception(
         'Cannot use --mae_dir or --mae_table when multiple columns are '
         'specified for "inspect" in the config file.')
   if mae_dir:
-    for col in mae_key_columns:
+    for col in key_columns:
       if not [ptc for ptc in pass_through_columns if ptc['name'] == col]:
         raise Exception(
             'Config file error: keyColumns has {}, which is not present in '
@@ -783,12 +808,12 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
               task_name)
   mae_data = None
   if mae_dir or mae_table:
-    if not mae_key_columns:
+    if not key_columns:
       raise Exception('"keyColumns" not specified in the config. Please '
                       'specify a list of columns that will be used as the '
                       'primary key for identifying MAE results.')
     mae_data = (inspect_data | 'generate_mae' >> beam.Map(
-        mae.generate_mae, task_name, mae_tag_categories, mae_key_columns))
+        mae.generate_mae, task_name, mae_tag_categories, key_columns))
   if mae_dir:
     _ = (mae_data | 'write_mae_to_gcs' >> beam.Map(
         write_mae, storage_client_fn, project, mae_dir))
@@ -802,14 +827,15 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
     if not deid_config_file:
       return ['Must set --deid_config_file when --deid_table is set.']
     # Call deidentify and write the result to BigQuery.
-    schema = _generate_schema(pass_through_columns + target_columns)
+    deid_columns = target_columns + field_transform_columns
+    schema = _generate_schema(pass_through_columns + deid_columns)
     _ = (reads
          | 'deid' >> beam.FlatMap(
              deid,
              credentials, project, deid_config, inspect_config,
-             pass_through_columns, target_columns, per_row_types, dlp_api_name)
-         | 'get_deid_text' >> beam.Map(get_deid_text,
-                                       pass_through_columns, target_columns)
+             pass_through_columns, deid_columns, per_row_types, dlp_api_name)
+         | 'get_deid_text' >> beam.Map(get_deid_text, pass_through_columns,
+                                       deid_columns)
          | 'write_deid_text' >> beam.io.Write(beam.io.BigQuerySink(
              deid_table, schema=schema,
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))

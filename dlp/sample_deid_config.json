@@ -8,7 +8,7 @@
       {"name": "note", "type": "stringValue"}
     ]
   },
-  "transformations": [
+  "infoTypeTransformations": [
     {
       "infoTypes": [
         {"name": "AGE"},

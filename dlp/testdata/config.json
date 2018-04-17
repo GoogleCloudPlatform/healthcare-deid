@@ -6,9 +6,18 @@
     ],
     "inspect": [
       {"name": "note", "type": "stringValue"}
+    ],
+    "fieldTransform": [
+      {"name": "field_transform_col", "type": "stringValue"}
     ]
   },
-  "transformations": [
+  "fieldTransformations": [
+    {
+      "fields": [{"name": "field_transform_col"}],
+      "primitiveTransformation": {"redactConfig": {}}
+    }
+  ],
+  "infoTypeTransformations": [
     {
       "infoTypes": [
         {"name": "PHONE_NUMBER"},

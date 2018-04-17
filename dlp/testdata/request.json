@@ -16,7 +16,9 @@
                 "primitiveTransformation": {"replaceWithInfoTypeConfig": {}}
             }]
           }
-        }
+        },
+        {"fields": [{"name": "field_transform_col"}],
+         "primitiveTransformation": {"redactConfig": {}}}
       ]
     }
   },
@@ -39,8 +41,10 @@
 
   "item": {"table": {
     "rows": [{"values": [{"stringValue": "text and PID and MORE PID"},
-                         {"stringValue": "111"}, {"integerValue": "1"}]}],
+                         {"stringValue": "111"}, {"integerValue": "1"},
+                         {"stringValue": "transform me!"}]}],
     "headers": [
-      {"name": "note"}, {"name": "patient_id"}, {"name": "record_number"}]
+      {"name": "note"}, {"name": "patient_id"}, {"name": "record_number"},
+      {"name": "field_transform_col"}]
   }}
 }

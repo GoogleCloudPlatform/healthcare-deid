@@ -113,17 +113,27 @@ and manually specify the number of workers, use:
 --deid_config_file specifies a json file (example in [sample_deid_config.json](http://github.com/GoogleCloudPlatform/healthcare-deid/tree/master/dlp/sample_deid_config.json))
 that contains an object with the following fields:
 
-1. `columns` (**required**) specifies two types of columns:
+1. `columns` (**required**) specifies up to three types of columns:
 
   * `inspect` (**required**): Columns that should be processed by the DLP API
-    and have the results written to the output table.
+    and have the results written to the output table. Only text identified as
+    PHI by the DLP API will be transformed.
   * `passThrough`: Columns that should be passed through to the output table
     as-is.
+  * `fieldTransform`: Columns that should have the entire cell's content
+    transformed by deidentify() without trying to identify PHI, and have the
+    results written to the output table. Each column here must have a
+    corresponding entry in `fieldTransformations`. These columns are not
+    included in the DLP API inspect() call, and therefore do not show up in
+    findings or MAE results.
 
    If a `inspect` column specifies an `infoTypesToDeId` list, only those
    infoTypes will be used for deidentification for that column.
 
-1. `transformations` is a list of [InfoTypeTransformation](https://cloud.google.com/dlp/docs/reference/rest/v2beta2/organizations.deidentifyTemplates#DeidentifyTemplate.InfoTypeTransformation)
+1. `infoTypeTransformations` is a list of [InfoTypeTransformation](https://cloud.google.com/dlp/docs/reference/rest/v2beta2/organizations.deidentifyTemplates#DeidentifyTemplate.InfoTypeTransformation)
+   that will be sent to the DLP API's content.deidentify() method.
+
+1. `fieldTransformations` is a list of [FieldTransformation](https://cloud.google.com/dlp/docs/reference/rest/v2/organizations.deidentifyTemplates#DeidentifyTemplate.FieldTransformation)
    that will be sent to the DLP API's content.deidentify() method.
 
 1. `keyColumns` is a list of columns that form a key uniquely identifying each

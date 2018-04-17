@@ -1,12 +1,11 @@
 {
   "columns": {
-    "inspect": [
-        {"name": "note", "type": "stringValue"},
-        {"name": "last_name", "type": "stringValue"}
-    ],
     "passThrough": [
-        {"name": "patient_id", "type": "stringValue"},
-        {"name": "record_number", "type": "integerValue"}
+      {"name": "patient_id", "type": "stringValue"},
+      {"name": "record_number", "type": "integerValue"}
+    ],
+    "inspect": [
+      {"name": "note", "type": "stringValue"}
     ]
   },
   "infoTypeTransformations": [

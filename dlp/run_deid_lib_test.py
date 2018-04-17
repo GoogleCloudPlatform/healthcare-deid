@@ -116,17 +116,21 @@ class RunDeidLibTest(unittest.TestCase):
   @patch('apache_beam.io.BigQuerySink')
   @patch('apache_beam.io.BigQuerySource')
   def testE2E(self, mock_bq_source_fn, mock_bq_sink_fn, mock_build_fn):
-    mock_bq_sink_fn.side_effect = partial(self.make_sink, _TABLE_TO_SCHEMA)
+    table_to_schema = _TABLE_TO_SCHEMA.copy()
+    table_to_schema['deid_tbl'] += ', field_transform_col:STRING'
+    mock_bq_sink_fn.side_effect = partial(self.make_sink, table_to_schema)
 
     mock_bq_source_fn.return_value = beam_testutil.FakeSource()
     mock_bq_source_fn.return_value._records = [
         {'first_name': 'Boaty', 'last_name': 'McBoatface',
          'note': 'text and PID and MORE PID',
-         'patient_id': '111', 'record_number': '1'}]
+         'patient_id': '111', 'record_number': '1',
+         'field_transform_col': 'transform me!'}]
 
     deid_response = {'item': {'table': {
-        'rows': [{'values': [{'stringValue': 'deid_resp_val'}]}],
-        'headers': [{'name': 'note'}]
+        'rows': [{'values': [{'stringValue': 'deid_resp_val'},
+                             {'stringValue': 'transformed!!'}]}],
+        'headers': [{'name': 'note'}, {'name': 'field_transform_col'}]
     }}}
     empty_locations = [{'recordLocation': {'tableLocation': {}}}]
     findings = {'findings': [
@@ -187,7 +191,8 @@ class RunDeidLibTest(unittest.TestCase):
 
     self.assertEqual(
         beam_testutil.get_table('deid_tbl'),
-        [{'patient_id': '111', 'record_number': '1', 'note': 'deid_resp_val'}])
+        [{'patient_id': '111', 'record_number': '1', 'note': 'deid_resp_val',
+          'field_transform_col': 'transformed!!'}])
     self.assertEqual(
         beam_testutil.get_table('findings_tbl'),
         [{'patient_id': '111', 'record_number': '1',
@@ -318,8 +323,7 @@ class RunDeidLibTest(unittest.TestCase):
     bq_client = Mock()
     bq_client.run_async_query.return_value = query_job
 
-    deid_cfg_file = os.path.join(TESTDATA_DIR,
-                                 'testdata/config.json')
+    deid_cfg_file = os.path.join(TESTDATA_DIR, 'testdata/batch_config.json')
 
     storage_client_fn = lambda x: testutil.FakeStorageClient()
     run_deid_lib.run_pipeline(
@@ -413,8 +417,7 @@ class RunDeidLibTest(unittest.TestCase):
     bq_client = Mock()
     bq_client.run_async_query.return_value = query_job
 
-    deid_cfg_file = os.path.join(TESTDATA_DIR,
-                                 'testdata/config.json')
+    deid_cfg_file = os.path.join(TESTDATA_DIR, 'testdata/batch_config.json')
 
     storage_client_fn = lambda x: testutil.FakeStorageClient()
     run_deid_lib.run_pipeline(
@@ -452,33 +455,41 @@ class RunDeidLibTest(unittest.TestCase):
         run_deid_lib._generate_schema([{'name': 'str', 'type': 'stringValue'}]))
 
   def testGenerateDeidConfig(self):
-    all_transformations = [
+    info_type_transformations = [
         {'infoTypes': [{'name': 'NAME'}],
          'primitiveTransformation': {'replaceWithInfoTypeConfig': {}}},
         {'infoTypes': [{'name': 'AGE'}, {'name': 'DATE'}],
+         'primitiveTransformation': {'otherConfig': {}}}
+    ]
+    field_transformations = [
+        {'fields': [{'name': 'field1'}, {'name': 'field2'}],
+         'primitiveTransformation': {'aTransformConfig': {}}},
+        {'fields': [{'name': 'field3'}],
          'primitiveTransformation': {'otherConfig': {}}}
     ]
     target_columns = [
         {'name': 'patient_name', 'type': 'stringValue'},
         {'name': 'date', 'type': 'stringValue', 'infoTypesToDeId': ['DATE']}]
 
-    gen = run_deid_lib._generate_deid_config(all_transformations,
-                                             target_columns)
+    gen = run_deid_lib._generate_deid_config(
+        info_type_transformations, target_columns, field_transformations)
 
-    expected = {'recordTransformations': {'fieldTransformations': [
-        {'fields': [{'name': 'date'}],
-         'infoTypeTransformations': {'transformations': [
-             {'infoTypes': [{'name': 'DATE'}],
-              'primitiveTransformation': {'otherConfig': {}}}]}},
-        {'fields': [{'name': 'patient_name'}],
-         'infoTypeTransformations': {'transformations': [
-             {'infoTypes': [{'name': 'NAME'}],
-              'primitiveTransformation': {'replaceWithInfoTypeConfig': {}}},
-             {'infoTypes': [{'name': 'AGE'}, {'name': 'DATE'}],
-              'primitiveTransformation': {'otherConfig': {}}}]}
-        }
-    ]}}
+    expected = {'recordTransformations': {
+        'fieldTransformations': field_transformations + [
+            {'fields': [{'name': 'date'}],
+             'infoTypeTransformations': {'transformations': [
+                 {'infoTypes': [{'name': 'DATE'}],
+                  'primitiveTransformation': {'otherConfig': {}}}]}},
+            {'fields': [{'name': 'patient_name'}],
+             'infoTypeTransformations': {'transformations': [
+                 {'infoTypes': [{'name': 'NAME'}],
+                  'primitiveTransformation': {'replaceWithInfoTypeConfig': {}}},
+                 {'infoTypes': [{'name': 'AGE'}, {'name': 'DATE'}],
+                  'primitiveTransformation': {'otherConfig': {}}}]}
+            }
+        ]}}
 
+    self.maxDiff = 3000
     self.assertEqual(gen, expected)
 
 if __name__ == '__main__':

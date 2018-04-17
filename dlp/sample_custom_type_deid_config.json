@@ -28,7 +28,7 @@
       ]
     }
   ],
-  "transformations": [
+  "infoTypeTransformations": [
     {
       "infoTypes": [
         {"name": "AGE"},

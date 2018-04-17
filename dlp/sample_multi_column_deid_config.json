@@ -10,7 +10,7 @@
       {"name": "date", "type": "stringValue", "infoTypesToDeId": ["DATE"]}
     ]
   },
-  "transformations": [
+  "infoTypeTransformations": [
     {
       "infoTypes": [
         {"name": "EMAIL_ADDRESS"},
