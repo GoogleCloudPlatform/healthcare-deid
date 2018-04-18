@@ -42,6 +42,9 @@ class GcsFileName(object):
   def string(self):
     return 'gs://{0}/{1}'.format(self.bucket, self.blob)
 
+  def __str__(self):
+    return self.string()
+
 
 def find_files(pattern, storage_client):
   """Find files on GCS matching the given pattern."""
