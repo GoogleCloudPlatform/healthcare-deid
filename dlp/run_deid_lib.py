@@ -247,6 +247,16 @@ def deid(rows, credentials, project, deid_config, inspect_config,
   if 'error' in response:
     raise Exception('Deidentify() failed: {}'.format(response['error']))
 
+  if 'overview' in response:
+    if 'transformationSummaries' in response['overview']:
+      for summary in response['overview']['transformationSummaries']:
+        if 'results' in summary:
+          for result in summary['results']:
+            if 'code' in result and result['code'] == 'ERROR':
+              raise Exception(
+                  'Deidentify() failed: {}: "{}"\n\nFull response:\n{}'.format(
+                      summary['field']['name'], result['details'], response))
+
   retvals = []
   for i in range(len(rows)):
     response_row = response['item']['table']['rows'][i]

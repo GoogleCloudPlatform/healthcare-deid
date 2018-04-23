@@ -109,3 +109,29 @@ Or without bazel:
 PYTHONPATH="."
 python mae/upload_files_to_bq.py --file_pattern="dir/*.xml" --table_name project:dataset.table
 ```
+
+## Removing invalid characters from text files
+
+If you discover that your input files cannot be opened by MAE due to invalid
+XML characters, you can use the "remove_invalid_characters" tool.
+
+As above, download the code from GitHub:
+
+```shell
+git clone https://github.com/GoogleCloudPlatform/healthcare-deid.git && \
+cd healthcare-deid
+```
+
+And then run either with [bazel](http://bazel.build/versions/master/docs/install.html):
+
+```shell
+bazel build mae:remove_invalid_characters && \
+bazel-bin/mae/remove_invalid_characters --input_pattern="dir/*.xml" --output_dir="output/"
+```
+
+Or without bazel:
+
+```shell
+PYTHONPATH="."
+python mae/remove_invalid_characters.py --input_pattern="dir/*.xml"  --output_dir="output/"
+```

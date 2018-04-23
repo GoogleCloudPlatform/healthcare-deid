@@ -31,3 +31,11 @@ py_binary(
         requirement("google-cloud-storage"),
     ],
 )
+
+py_binary(
+    name = "remove_invalid_characters",
+    srcs = ["remove_invalid_characters.py"],
+    deps = [
+        "//common:mae",
+    ],
+)

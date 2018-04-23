@@ -113,6 +113,33 @@ class RunDeidLibTest(unittest.TestCase):
     return beam_testutil.FakeSink(table_name)
 
   @patch('apiclient.discovery.build')
+  def testDeidError(self, mock_build_fn):
+    deid_response = {
+        'item': {'table': {
+            'rows': [{'values': [{'stringValue': 'deid_resp_val'},
+                                 {'stringValue': 'transformed!!'}]}],
+            'headers': [{'name': 'note'}, {'name': 'field_transform_col'}]
+        }},
+        'overview': {
+            'transformationSummaries': [{
+                'field': {'name': 'MyField'},
+                'results': [{'code': 'ERROR', 'details': 'some details'}]
+            }]
+        }
+    }
+    fake_content = Mock()
+    fake_content.deidentify.return_value = Mock(
+        execute=Mock(return_value=deid_response))
+    fake_projects = Mock(content=Mock(return_value=fake_content))
+    fake_dlp = Mock(projects=Mock(return_value=fake_projects))
+    mock_build_fn.return_value = fake_dlp
+
+    self.assertRaisesRegexp(
+        Exception, r'Deidentify\(\) failed: MyField: "some details"',
+        run_deid_lib.deid,
+        [], 'fake-creds', 'project', {}, {}, [], [], [], 'api')
+
+  @patch('apiclient.discovery.build')
   @patch('apache_beam.io.BigQuerySink')
   @patch('apache_beam.io.BigQuerySource')
   def testE2E(self, mock_bq_source_fn, mock_bq_sink_fn, mock_build_fn):

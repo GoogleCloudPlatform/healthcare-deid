@@ -67,6 +67,8 @@ def find_files(pattern, storage_client):
       re.escape(file_pattern).replace('\\*', '.*').replace('\\?', '.') + r'\Z')
 
   bucket = storage_client.lookup_bucket(bucket_name)
+  if not bucket:
+    raise Exception('Could not find bucket: "{}"'.format(bucket_name))
   for blob in bucket.list_blobs(prefix=file_prefix):
     if not re.match(file_pattern_as_regex, blob.name):
       continue

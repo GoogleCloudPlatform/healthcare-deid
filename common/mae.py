@@ -14,20 +14,34 @@
 
 """Functions for generating MAE-compatible data."""
 
+from bisect import bisect
 import collections
+import re
 
 
 MaeTuple = collections.namedtuple('MaeTuple', ['record_id', 'mae_xml'])
 
 
-def _start(finding):
+# Remove control characters which aren't valid in XML 1.0, since XmlTree can't
+# handle them. https://www.w3.org/TR/xml/#charsets
+INVALID_XML_CHARS = []
+for ch in range(32):
+  if ch in [9, 10, 13]:  # Tab, Line Feed, and Carriage Return are valid.
+    continue
+  INVALID_XML_CHARS.append(chr(ch))
+INVALID_XML_CHARS = ''.join(INVALID_XML_CHARS)
+
+
+def _start(finding, invalid_chars_indexes):
   if 'start' not in finding['location']['codepointRange']:
     return 0
-  return int(finding['location']['codepointRange']['start'])
+  start = int(finding['location']['codepointRange']['start'])
+  return start - bisect(invalid_chars_indexes, start)
 
 
-def _end(finding):
-  return int(finding['location']['codepointRange']['end'])
+def _end(finding, invalid_chars_indexes):
+  end = int(finding['location']['codepointRange']['end'])
+  return end - bisect(invalid_chars_indexes, end)
 
 
 def generate_dtd(mae_tag_categories, task_name):
@@ -50,6 +64,10 @@ def _get_infotype_to_tag_map(mae_tag_categories):
   return infotype_to_tag_map
 
 
+def remove_invalid_characters(text):
+  return re.sub('[' + INVALID_XML_CHARS + ']', '', text)
+
+
 def generate_mae(inspect_result, task_name, mae_tag_categories, key_columns):
   """Convert inspect() findings to MAE format.
 
@@ -65,11 +83,20 @@ def generate_mae(inspect_result, task_name, mae_tag_categories, key_columns):
   Returns:
     A MaeTuple.
   """
+  raw_note = inspect_result['original_note']
+  invalid_chars_indexes = []
+  for i, char in enumerate(raw_note):
+    if char in INVALID_XML_CHARS:
+      invalid_chars_indexes.append(i)
+  safe_note = remove_invalid_characters(raw_note)
+
   infotype_to_tag_map = _get_infotype_to_tag_map(mae_tag_categories)
-  mae_xml = [u"""<?xml version="1.0" encoding="UTF-8" ?>
+  mae_xml = [
+      u"""<?xml version="1.0" encoding="UTF-8" ?>
 <{0}>
 <TEXT><![CDATA[{1}]]></TEXT>
-<TAGS>""".format(task_name, inspect_result['original_note'])]
+<TAGS>""".format(task_name, safe_note)
+  ]
   counts = collections.defaultdict(int)
   findings = []
   if 'findings' in inspect_result['result']:
@@ -79,7 +106,8 @@ def generate_mae(inspect_result, task_name, mae_tag_categories, key_columns):
     count = counts[tag_name]
     counts[tag_name] += 1
     mae_xml.append('\n<{0} id="{0}{1}" spans="{2}~{3}" />'.format(
-        tag_name, count, _start(finding), _end(finding)))
+        tag_name, count, _start(finding, invalid_chars_indexes),
+        _end(finding, invalid_chars_indexes)))
 
   mae_xml.append('\n</TAGS></{0}>\n'.format(task_name))
 
