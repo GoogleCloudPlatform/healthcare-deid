@@ -88,12 +88,13 @@ git clone https://github.com/GoogleCloudPlatform/healthcare-deid.git && \
 cd healthcare-deid
 ```
 
-Install the apache beam client:
+Install the apache beam client. Note that google-cloud-storage is also required
+if the files are coming from GCS, and at least version 0.5.23 of google-apitools if the files contain unicode characters.
 
 ```shell
 virtualenv env
 source env/bin/activate
-pip install apache_beam[gcp] google-cloud-storage
+pip install apache_beam[gcp] google-cloud-storage google-apitools>=0.5.23
 ```
 
 The tool can be built and run using the [bazel build system](http://bazel.build/versions/master/docs/install.html):

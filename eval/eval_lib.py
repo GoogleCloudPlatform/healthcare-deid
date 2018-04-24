@@ -54,11 +54,27 @@ class Finding(object):
     return cls(category, start, end, full_text[start:end], context_start,
                context)
 
+  def has_same_indices_as_any_of(self, findings):
+    """Returns True if self has the same range as any of the given Findings."""
+    for finding in findings:
+      if self.start == finding.start and self.end == finding.end:
+        return True
+    return False
+
   def intersects(self, findings):
     """Return True if self overlaps with any of the given list of Findings."""
     for finding in findings:
       if ((self.start <= finding.start and self.end > finding.start) or
           (finding.start <= self.start and finding.end > self.start)):
+        return True
+    return False
+
+  def intersects_with_category(self, findings):
+    """Returns True if self intersects with a Finding of the same category."""
+    for finding in findings:
+      if (((self.start <= finding.start and self.end > finding.start) or
+           (finding.start <= self.start and finding.end > self.start)) and
+          finding.category == self.category):
         return True
     return False
 
@@ -192,7 +208,7 @@ class IndividualResult(object):
                                              self.typeless.SerializeToString()))
 
 
-def count_matches(findings, golden_findings, record_id, strict):
+def count_matches(findings, golden_findings, record_id, strict, ignore_type):
   """Calculate the true/false positive/negatives for the given findings.
 
   Args:
@@ -201,7 +217,9 @@ def count_matches(findings, golden_findings, record_id, strict):
     record_id: str; Unique identifier for this set of findings.
     strict: bool; If True, use strict matching, i.e. it's only a match if the
       type matches and the text is exactly the same. Otherwise, two findings
-      match if they have at least one character in common, and type is ignored.
+      match if they have at least one character in common.
+    ignore_type: bool; If True, ignore type when calculating the per-type
+      results.
 
   Returns:
     An IndividualResult object containing the counts and derived stats.
@@ -210,28 +228,72 @@ def count_matches(findings, golden_findings, record_id, strict):
   result.record_id = record_id
   for finding in findings:
     if ((strict and finding not in golden_findings) or
-        (not strict and not finding.intersects(golden_findings))):
+        (not strict and not finding.intersects_with_category(golden_findings))):
       result.stats.false_positives += 1
-      result.debug_info.append(
-          {'record_id': record_id, 'error_type': 'false_positive',
-           'text': finding.text, 'context': finding.context(),
-           'info_type': finding.category})
-      result.per_type[finding.category].false_positives += 1
+      if strict:
+        result.debug_info.append({
+            'record_id': record_id,
+            'error_type': 'false_positive',
+            'text': finding.text,
+            'context': finding.context(),
+            'info_type': finding.category
+        })
+      if not ignore_type:
+        result.per_type[finding.category].false_positives += 1
+
+    if ((strict and not finding.has_same_indices_as_any_of(golden_findings)) or
+        (not strict and not finding.intersects(golden_findings))):
+      result.typeless.false_positives += 1
+      if not strict:
+        result.debug_info.append({
+            'record_id': record_id,
+            'error_type': 'false_positive',
+            'text': finding.text,
+            'context': finding.context(),
+            'info_type': finding.category
+        })
+      if ignore_type:
+        result.per_type[finding.category].false_positives += 1
 
   for golden_finding in golden_findings:
     if ((strict and golden_finding in findings) or
-        (not strict and golden_finding.intersects(findings))):
+        (not strict and golden_finding.intersects_with_category(findings))):
       result.stats.true_positives += 1
-      result.per_type[golden_finding.category].true_positives += 1
+      if not ignore_type:
+        result.per_type[golden_finding.category].true_positives += 1
     else:
-      result.debug_info.append(
-          {'record_id': record_id, 'error_type': 'false_negative',
-           'text': golden_finding.text, 'context': golden_finding.context(),
-           'info_type': golden_finding.category})
-      result.per_type[golden_finding.category].false_negatives += 1
+      if strict:
+        result.debug_info.append({
+            'record_id': record_id,
+            'error_type': 'false_negative',
+            'text': golden_finding.text,
+            'context': golden_finding.context(),
+            'info_type': golden_finding.category
+        })
+      if not ignore_type:
+        result.per_type[golden_finding.category].false_negatives += 1
       result.stats.false_negatives += 1
 
+    if ((strict and golden_finding.has_same_indices_as_any_of(findings)) or
+        (not strict and golden_finding.intersects(findings))):
+      result.typeless.true_positives += 1
+      if ignore_type:
+        result.per_type[golden_finding.category].true_positives += 1
+    else:
+      result.typeless.false_negatives += 1
+      if not strict:
+        result.debug_info.append({
+            'record_id': record_id,
+            'error_type': 'false_negative',
+            'text': golden_finding.text,
+            'context': golden_finding.context(),
+            'info_type': golden_finding.category
+        })
+      if ignore_type:
+        result.per_type[golden_finding.category].false_negatives += 1
+
   calculate_stats(result.stats)
+  calculate_stats(result.typeless)
   return result
 
 
@@ -239,11 +301,28 @@ def binary_token_compare(findings, golden_findings, record_id):
   tokenized_findings = tokenize_set(findings)
   tokenized_goldens = tokenize_set(golden_findings)
   return count_matches(
-      tokenized_findings, tokenized_goldens, record_id, strict=False)
+      tokenized_findings,
+      tokenized_goldens,
+      record_id,
+      strict=False,
+      ignore_type=True)
+
+
+def typed_token_compare(findings, golden_findings, record_id):
+  """Same as before, but do not ignore the type in the per_type listing."""
+  tokenized_findings = tokenize_set(findings)
+  tokenized_goldens = tokenize_set(golden_findings)
+  return count_matches(
+      tokenized_findings,
+      tokenized_goldens,
+      record_id,
+      strict=False,
+      ignore_type=False)
 
 
 def strict_entity_compare(findings, golden_findings, record_id):
-  return count_matches(findings, golden_findings, record_id, strict=True)
+  return count_matches(
+      findings, golden_findings, record_id, strict=True, ignore_type=False)
 
 
 def _sum_typed_stats(per_type, stats):

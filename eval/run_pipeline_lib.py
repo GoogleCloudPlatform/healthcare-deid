@@ -176,11 +176,11 @@ class OverallResults(object):
     r = results.strict_entity_matching_results.per_type_micro_average_results
     r.extend(self.strict_entity_matching.per_type_protos())
 
-    eval_lib.calculate_stats(self.binary_token_matching.micro)
+    eval_lib.calculate_stats(self.binary_token_matching.typeless_micro)
     results.binary_token_matching_results.micro_average_results.CopyFrom(
-        self.binary_token_matching.micro)
+        self.binary_token_matching.typeless_micro)
     results.binary_token_matching_results.macro_average_results.CopyFrom(
-        self.binary_token_matching.macro.calculate_stats())
+        self.binary_token_matching.typeless_macro.calculate_stats())
     results.binary_token_matching_results.per_type_micro_average_results.extend(
         self.binary_token_matching.per_type_protos())
 
@@ -253,7 +253,7 @@ def _create_row(stats, now, extra_columns=tuple()):
 
 def format_individual_result_for_bq(result, now):
   _, binary_token_result = result
-  return _create_row(binary_token_result.stats, now,
+  return _create_row(binary_token_result.typeless, now,
                      [('record_id', binary_token_result.record_id)])
 
 
@@ -282,7 +282,7 @@ def get_binary_token_result(entity_and_binary_result_pair):
   _, binary_token_result = entity_and_binary_result_pair
   pb = results_pb2.IndividualResult()
   pb.record_id = binary_token_result.record_id
-  pb.stats.CopyFrom(binary_token_result.stats)
+  pb.stats.CopyFrom(binary_token_result.typeless)
   return text_format.MessageToString(pb)
 
 

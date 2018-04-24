@@ -150,24 +150,41 @@ class EvalLibTest(unittest.TestCase):
 
   def testLooseMatching(self):
     finding = eval_lib.Finding
-    findings = set([finding('TYPE_A', 0, 3, 'one'),
-                    finding('TYPE_B', 5, 8, 'two'),
-                    finding('TYPE_C', 20, 25, 'three')])
-    golden_findings = set([finding('TYPE_A', 0, 3, 'hit'),
-                           finding('TYPE_B', 7, 10, 'hit'),
-                           finding('TYPE_C', 25, 29, 'miss')])
+    findings = set([
+        finding('TYPE_A', 0, 3, 'one'),
+        finding('TYPE_B', 5, 8, 'two'),
+        finding('TYPE_C', 20, 25, 'three'),
+        finding('TYPE_D', 30, 34, 'four')
+    ])
+    golden_findings = set([
+        finding('TYPE_A', 0, 3, 'hit'),
+        finding('TYPE_B', 7, 10, 'hit'),
+        finding('TYPE_C', 25, 29, 'miss'),
+        finding('TYPE_E', 30, 34, 'wrong')
+    ])
     result = eval_lib.count_matches(
-        findings, golden_findings, record_id='', strict=False)
+        findings, golden_findings, record_id='', strict=False, ignore_type=True)
 
     expected_stats = results_pb2.Stats()
     expected_stats.true_positives = 2
-    expected_stats.false_positives = 1
-    expected_stats.false_negatives = 1
-    expected_stats.precision = .66666667
-    expected_stats.recall = .66666667
-    expected_stats.f_score = .66666667
+    expected_stats.false_positives = 2
+    expected_stats.false_negatives = 2
+    expected_stats.precision = 0.5
+    expected_stats.recall = 0.5
+    expected_stats.f_score = 0.5
     self.assertEqual(normalize_floats(expected_stats),
                      normalize_floats(result.stats))
+
+    expected_typeless_stats = results_pb2.Stats()
+    expected_typeless_stats.true_positives = 3
+    expected_typeless_stats.false_positives = 1
+    expected_typeless_stats.false_negatives = 1
+    expected_typeless_stats.precision = 0.75
+    expected_typeless_stats.recall = 0.75
+    expected_typeless_stats.f_score = 0.75
+    self.assertEqual(
+        normalize_floats(expected_typeless_stats),
+        normalize_floats(result.typeless))
 
     a = results_pb2.Stats()
     a.true_positives = 1
@@ -176,7 +193,68 @@ class EvalLibTest(unittest.TestCase):
     c = results_pb2.Stats()
     c.false_positives = 1
     c.false_negatives = 1
-    expected_per_type = {'TYPE_A': a, 'TYPE_B': b, 'TYPE_C': c}
+    e = results_pb2.Stats()
+    e.true_positives = 1
+    expected_per_type = {'TYPE_A': a, 'TYPE_B': b, 'TYPE_C': c, 'TYPE_E': e}
+    self.assertEqual(expected_per_type, result.per_type)
+
+  def testStrictMatching(self):
+    finding = eval_lib.Finding
+    findings = set([
+        finding('TYPE_A', 0, 3, 'one'),
+        finding('TYPE_B', 5, 8, 'two'),
+        finding('TYPE_C', 20, 25, 'three'),
+        finding('TYPE_D', 30, 34, 'four')
+    ])
+    golden_findings = set([
+        finding('TYPE_A', 0, 3, 'hit'),
+        finding('TYPE_B', 7, 10, 'hit'),
+        finding('TYPE_C', 25, 29, 'miss'),
+        finding('TYPE_E', 30, 34, 'wrong type')
+    ])
+    result = eval_lib.count_matches(
+        findings, golden_findings, record_id='', strict=True, ignore_type=False)
+
+    expected_stats = results_pb2.Stats()
+    expected_stats.true_positives = 1
+    expected_stats.false_positives = 3
+    expected_stats.false_negatives = 3
+    expected_stats.precision = 0.25
+    expected_stats.recall = 0.25
+    expected_stats.f_score = 0.25
+    self.assertEqual(
+        normalize_floats(expected_stats), normalize_floats(result.stats))
+
+    expected_typeless_stats = results_pb2.Stats()
+    expected_typeless_stats.true_positives = 2
+    expected_typeless_stats.false_positives = 2
+    expected_typeless_stats.false_negatives = 2
+    expected_typeless_stats.precision = 0.5
+    expected_typeless_stats.recall = 0.5
+    expected_typeless_stats.f_score = 0.5
+    self.assertEqual(
+        normalize_floats(expected_typeless_stats),
+        normalize_floats(result.typeless))
+
+    a = results_pb2.Stats()
+    a.true_positives = 1
+    b = results_pb2.Stats()
+    b.false_positives = 1
+    b.false_negatives = 1
+    c = results_pb2.Stats()
+    c.false_positives = 1
+    c.false_negatives = 1
+    d = results_pb2.Stats()
+    d.false_positives = 1
+    e = results_pb2.Stats()
+    e.false_negatives = 1
+    expected_per_type = {
+        'TYPE_A': a,
+        'TYPE_B': b,
+        'TYPE_C': c,
+        'TYPE_D': d,
+        'TYPE_E': e
+    }
     self.assertEqual(expected_per_type, result.per_type)
 
   def testCharactersCount(self):
@@ -381,6 +459,60 @@ class EvalLibTest(unittest.TestCase):
     expected_name.false_positives = 3
     expected_name.false_negatives = 3
     expected_per_type = {'NAME': expected_name}
+    self.assertEqual(expected_per_type, result.per_type)
+
+  def testTypedTokensCount(self):
+    finding = eval_lib.Finding
+    findings = set([
+        finding('NAME', 0, 9, 'The quick'),
+        finding('ID', 10, 19, 'brown fox'),
+        finding('ORGANIZATION', 20, 30, 'jumps over')
+    ])
+    golden_findings = set([
+        finding('NAME', 0, 9, 'The quick'),
+        finding('AGE', 10, 19, 'brown fox'),
+        finding('DATE', 35, 43, 'lazy dog')
+    ])
+    result = eval_lib.typed_token_compare(
+        findings, golden_findings, record_id='')
+
+    expected_typeless = results_pb2.Stats()
+    expected_typeless.true_positives = 4
+    expected_typeless.false_positives = 2
+    expected_typeless.false_negatives = 2
+    expected_typeless.precision = 0.666667
+    expected_typeless.recall = 0.666667
+    expected_typeless.f_score = 0.666667
+    self.assertEqual(
+        normalize_floats(expected_typeless), normalize_floats(result.typeless))
+
+    expected_total = results_pb2.Stats()
+    expected_total.true_positives = 2
+    expected_total.false_positives = 4
+    expected_total.false_negatives = 4
+    expected_total.precision = 0.333333
+    expected_total.recall = 0.333333
+    expected_total.f_score = 0.333333
+    self.assertEqual(
+        normalize_floats(expected_total), normalize_floats(result.stats))
+
+    expected_name = results_pb2.Stats()
+    expected_name.true_positives = 2
+    expected_id = results_pb2.Stats()
+    expected_id.false_positives = 2
+    expected_age = results_pb2.Stats()
+    expected_age.false_negatives = 2
+    expected_org = results_pb2.Stats()
+    expected_org.false_positives = 2
+    expected_date = results_pb2.Stats()
+    expected_date.false_negatives = 2
+    expected_per_type = {
+        'NAME': expected_name,
+        'ID': expected_id,
+        'AGE': expected_age,
+        'ORGANIZATION': expected_org,
+        'DATE': expected_date
+    }
     self.assertEqual(expected_per_type, result.per_type)
 
   def testInvalidSpans(self):
