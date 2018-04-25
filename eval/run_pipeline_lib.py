@@ -96,7 +96,7 @@ def compare_bq_row(row, types_to_ignore):
   return compare_findings(findings, golden_findings, record_id)
 
 
-def compare(filename, golden_dir, types_to_ignore, project):
+def compare(filename, golden_dir, types_to_ignore):
   """Load data from the file and the golden file and compare.
 
   Args:
@@ -105,12 +105,11 @@ def compare(filename, golden_dir, types_to_ignore, project):
       a file with the same basename as filename.
     types_to_ignore: List of strings representing types that should be excluded
       from the analysis.
-    project: project ID used to access the files.
   Returns:
     (IndividualResult, IndividualResult), where the first is for strict entity
     matching and the second is for binary token matching.
   """
-  storage_client = storage.Client(project)
+  storage_client = storage.Client()
   golden_file = gcsutil.GcsFileName.from_path(
       posixpath.join(golden_dir, posixpath.basename(filename.blob)))
 
@@ -217,9 +216,9 @@ class CombineResultsFn(beam.CombineFn):
     return results.SerializeToString()
 
 
-def write_aggregate_results_to_gcs(results_bytes, results_dir, project):
+def write_aggregate_results_to_gcs(results_bytes, results_dir):
   """Write the aggregate results to results_dir."""
-  storage_client = storage.Client(project)
+  storage_client = storage.Client()
   results = results_pb2.Results()
   results.ParseFromString(results_bytes)
 
@@ -296,7 +295,7 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
                  mae_input_query, mae_golden_table,
                  write_per_note_stats_to_gcs, results_table,
                  per_note_results_table, debug_output_table, types_to_ignore,
-                 project, pipeline_args):
+                 pipeline_args):
   """Evaluate the input files against the goldens."""
   if ((mae_input_pattern is None) == (mae_input_query is None) or
       (mae_golden_dir is None) == (mae_golden_table is None) or
@@ -315,7 +314,7 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
 
   if mae_input_pattern:
     filenames = []
-    storage_client = storage.Client(project)
+    storage_client = storage.Client()
     for f in gcsutil.find_files(mae_input_pattern, storage_client):
       if posixpath.dirname(f.string()) != posixpath.dirname(mae_input_pattern):
         # Ignore subdirectories.
@@ -335,8 +334,7 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
   else:
     per_note_results = (p |
                         beam.Create(filenames) |
-                        beam.Map(compare, mae_golden_dir, types_to_ignore,
-                                 project))
+                        beam.Map(compare, mae_golden_dir, types_to_ignore))
   now = str(_get_utcnow())
   if debug_output_table:
     _ = (per_note_results |
@@ -357,7 +355,7 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
                        beam.CombineGlobally(CombineResultsFn()))
   if results_dir:
     _ = (aggregate_results |
-         beam.Map(write_aggregate_results_to_gcs, results_dir, project))
+         beam.Map(write_aggregate_results_to_gcs, results_dir))
   if results_table:
     _ = (aggregate_results |
          beam.FlatMap(format_aggregate_results_for_bq, now) |
@@ -401,8 +399,6 @@ def add_all_args(parser):
   parser.add_argument('--per_note_results_table', type=str,
                       help=('Bigquery table to write per-note binary token '
                             'matching results to.'))
-  parser.add_argument('--project', type=str, required=True,
-                      help='GCP project to run as.')
   parser.add_argument('--types_to_ignore', type=lambda s: s.split(','),
                       help=('Comma-separated list of types that should be '
                             'excluded from the analysis.'))

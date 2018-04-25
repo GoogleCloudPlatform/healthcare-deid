@@ -122,7 +122,7 @@ class RunPipelineLibTest(unittest.TestCase):
     run_pipeline_lib.run_pipeline(
         input_pattern, golden_dir, results_dir, mae_input_query,
         mae_golden_table, False, 'results_table', per_note_table, debug_table,
-        types_to_ignore, 'project', pipeline_args=None)
+        types_to_ignore, pipeline_args=None)
 
     # Check that we generated the query correctly.
     mock_bq_source_fn.assert_called_with(query=(
@@ -201,7 +201,7 @@ class RunPipelineLibTest(unittest.TestCase):
                                   mae_input_query, mae_golden_table, True,
                                   'results_table', 'per_note_results_table',
                                   'debug_output_table', types_to_ignore,
-                                  'project', pipeline_args=None)
+                                  pipeline_args=None)
     beam.io.WriteToText = self.old_write_to_text
 
     # Check we wrote the correct results to BigQuery.

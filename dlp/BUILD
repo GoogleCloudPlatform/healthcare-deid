@@ -28,6 +28,7 @@ py_library(
     deps = [
         "//common:mae",
         requirement("apache_beam"),
+        requirement("google-auth-httplib2"),
     ],
 )
 

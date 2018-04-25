@@ -188,12 +188,11 @@ class RunDeidLibTest(unittest.TestCase):
     bq_client.run_async_query.return_value = query_job
 
     deid_cfg = os.path.join(TESTDATA_DIR, 'testdata/config.json')
-    storage_client_fn = lambda x: testutil.FakeStorageClient()
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg, 'InspectPhiTask',
-        'fake-credentials', 'project', storage_client_fn, bq_client, None,
-        'dlp', batch_size=1, pipeline_args=None)
+        'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
+        None, 'dlp', batch_size=1, pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/request.json')) as f:
@@ -277,14 +276,13 @@ class RunDeidLibTest(unittest.TestCase):
     deid_cfg_file = os.path.join(TESTDATA_DIR,
                                  'testdata/multi_column_config.json')
 
-    storage_client_fn = lambda x: testutil.FakeStorageClient()
     mae_dir = ''  # Not compatible with multi-column.
     mae_table = ''  # Not compatible with multi-column.
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
         mae_dir, mae_table, deid_cfg_file, 'InspectPhiTask', 'fake-credentials',
-        'project', storage_client_fn, bq_client, None, 'dlp', batch_size=1,
-        pipeline_args=None)
+        'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
+        batch_size=1, pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(
@@ -352,12 +350,11 @@ class RunDeidLibTest(unittest.TestCase):
 
     deid_cfg_file = os.path.join(TESTDATA_DIR, 'testdata/batch_config.json')
 
-    storage_client_fn = lambda x: testutil.FakeStorageClient()
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_file, 'InspectPhiTask',
-        'fake-credentials', 'project', storage_client_fn, bq_client, None,
-        'dlp', batch_size=2, pipeline_args=None)
+        'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
+        None, 'dlp', batch_size=2, pipeline_args=None)
 
     expected_request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
@@ -446,12 +443,11 @@ class RunDeidLibTest(unittest.TestCase):
 
     deid_cfg_file = os.path.join(TESTDATA_DIR, 'testdata/batch_config.json')
 
-    storage_client_fn = lambda x: testutil.FakeStorageClient()
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_file, 'InspectPhiTask',
-        'fake-credentials', 'project', storage_client_fn, bq_client, None,
-        'dlp', batch_size=2, pipeline_args=None)
+        'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
+        None, 'dlp', batch_size=2, pipeline_args=None)
 
     expected_request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:

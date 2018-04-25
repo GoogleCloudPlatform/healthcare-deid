@@ -41,16 +41,21 @@ def main():
       description='Run Data Loss Prevention (DLP) DeID on Google Cloud.')
   run_deid_lib.add_all_args(parser)
   args, pipeline_args = parser.parse_known_args(sys.argv[1:])
-  # --project is used both as a local arg and a pipeline arg, so parse it, then
-  # add it to pipeline_args as well.
-  pipeline_args += ['--project', args.project]
 
   var = 'GOOGLE_APPLICATION_CREDENTIALS'
   if var not in os.environ or not os.environ[var]:
     raise Exception('You must specify service account credentials in the '
                     'GOOGLE_APPLICATION_CREDENTIALS environment variable.')
-  credentials, _ = google.auth.default()
-  bq_client = bigquery.Client(project=args.project)
+  credentials, default_project = google.auth.default()
+
+  # Parse --project and re-add it to the pipeline args, swapping it out for the
+  # default if it's not set.
+  project = args.project
+  if not project:
+    project = default_project
+  pipeline_args += ['--project', project]
+
+  bq_client = bigquery.Client(project)
   bq_config_fn = None
   if hasattr(bigquery.job, 'QueryJobConfig'):
     bq_config_fn = bigquery.job.QueryJobConfig
@@ -58,7 +63,7 @@ def main():
   errors = run_deid_lib.run_pipeline(
       args.input_query, args.input_table, args.deid_table, args.findings_table,
       args.mae_dir, args.mae_table, args.deid_config_file, args.mae_task_name,
-      credentials, args.project, storage.Client, bq_client, bq_config_fn,
+      credentials, default_project, storage.Client, bq_client, bq_config_fn,
       args.dlp_api_name, args.batch_size, pipeline_args)
 
   if errors:

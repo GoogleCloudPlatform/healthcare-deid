@@ -195,7 +195,7 @@ def deid(rows, credentials, project, deid_config, inspect_config,
   Args:
     rows: A list of BigQuery rows with data to send to the DLP API.
     credentials: oauth2client.Credentials for authentication with the DLP API.
-    project: The project to send the request for.
+    project: The project to set as the parent in the request.
     deid_config: DeidentifyConfig map, as defined in the DLP API:
       https://goo.gl/WrvsDB#DeidentifyTemplate.DeidentifyConfig
     inspect_config: inspectConfig map, as defined in the DLP API:
@@ -304,7 +304,7 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
   Args:
     rows: A list of BigQuery rows with data to send to the DLP API.
     credentials: oauth2client.Credentials for authentication with the DLP API.
-    project: The project to send the request for.
+    project: The project to set as the parent in the request.
     inspect_config: inspectConfig map, as defined in the DLP API:
       https://cloud.google.com/dlp/docs/reference/rest/v2/InspectConfig
     pass_through_columns: List of strings; columns that should not be sent to
@@ -398,9 +398,9 @@ def mae_to_bq_row(mae_result):
   return {'record_id': mae_result.record_id, 'xml': mae_result.mae_xml}
 
 
-def write_mae(mae_result, storage_client_fn, project, mae_dir):
+def write_mae(mae_result, storage_client_fn, mae_dir):
   """Write the MAE results to GCS."""
-  storage_client = storage_client_fn(project)
+  storage_client = storage_client_fn()
   filename = '{}.xml'.format(mae_result.record_id)
   bucket_name, blob_dir = split_gcs_name(mae_dir)
   bucket = storage_client.get_bucket(bucket_name)
@@ -408,10 +408,9 @@ def write_mae(mae_result, storage_client_fn, project, mae_dir):
   blob.upload_from_string(mae_result.mae_xml)
 
 
-def write_dtd(storage_client_fn, project, mae_dir, mae_tag_categories,
-              task_name):
+def write_dtd(storage_client_fn, mae_dir, mae_tag_categories, task_name):
   """Write the DTD config file."""
-  storage_client = storage_client_fn(project)
+  storage_client = storage_client_fn()
   dtd_contents = mae.generate_dtd(mae_tag_categories, task_name)
   bucket_name, blob_dir = split_gcs_name(mae_dir)
   bucket = storage_client.get_bucket(bucket_name)
@@ -814,8 +813,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if mae_dir:
     if not mae_dir.startswith('gs://'):
       return ['--mae_dir must be a GCS path starting with "gs://".']
-    write_dtd(storage_client_fn, project, mae_dir, mae_tag_categories,
-              task_name)
+    write_dtd(storage_client_fn, mae_dir, mae_tag_categories, task_name)
   mae_data = None
   if mae_dir or mae_table:
     if not key_columns:
@@ -826,7 +824,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
         mae.generate_mae, task_name, mae_tag_categories, key_columns))
   if mae_dir:
     _ = (mae_data | 'write_mae_to_gcs' >> beam.Map(
-        write_mae, storage_client_fn, project, mae_dir))
+        write_mae, storage_client_fn, mae_dir))
   if mae_table:
     _ = (mae_data | 'mae_to_bq_row' >> beam.Map(mae_to_bq_row) |
          'write_mae_to_bq' >> beam.io.Write(beam.io.BigQuerySink(
@@ -879,8 +877,15 @@ def add_all_args(parser):
                       default='InspectPhiTask')
   parser.add_argument('--deid_config_file', type=str, required=False,
                       help='Path to a json file holding the config to use.')
-  parser.add_argument('--project', type=str, required=True,
-                      help='GCP project to run as.')
+  parser.add_argument(
+      '--project', type=str, required=False,
+      help=('Defaults to the value specified in GOOGLE_APPLICATION_CREDENTIALS.'
+            ' Is used (1) as the "project" pipeline option when --runner '
+            'DataflowRunner is specified, (2) as the project ID for BigQuery '
+            'tables that don\'t specify a project, and (3) as the project '
+            'where any temporary BigQuery tables will be created. The project '
+            'specified in GOOGLE_APPLICATION_CREDENTIALS is always used for '
+            'calling the DLP API.'))
   parser.add_argument('--dlp_api_name', type=str, required=False,
                       help='Name to use in the DLP API url.',
                       default='dlp')

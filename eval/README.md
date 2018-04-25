@@ -100,8 +100,7 @@ bazel build eval:run_pipeline && \
 bazel-bin/eval/run_pipeline \
   --mae_input_pattern gs://${BUCKET?}/dir/*.xml \
   --mae_golden_dir gs://${BUCKET?}/goldens/ \
-  --results_dir gs://${BUCKET?}/eval/ \
-  --project ${PROJECT?}
+  --results_dir gs://${BUCKET?}/eval/
 ```
 
 Or with BigQuery instead of GCS:
@@ -111,14 +110,14 @@ bazel build eval:run_pipeline && \
 bazel-bin/eval/run_pipeline \
   --mae_input_query "SELECT * FROM [${PROJECT?}:${DATASET?}.table]" \
   --mae_golden_table ${PROJECT?}:${DATASET?}.goldens \
-  --results_table ${PROJECT?}:${DATASET?}.results \
-  --project ${PROJECT?}
+  --results_table ${PROJECT?}:${DATASET?}.results
 ```
 
 To run in parallel on Google Cloud Dataflow, add:
 
 ```shell
 --runner DataflowRunner \
+--project ${PROJECT?} \
 --temp_location gs://${BUCKET?}/tmp \
 --staging_location gs://${BUCKET?}/staging \
 --setup_file ./setup.py
