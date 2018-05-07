@@ -146,6 +146,39 @@ class RunPipelineLibTest(unittest.TestCase):
     self.assertEqual([normalize_dict_floats(r) for r in expected_results],
                      [normalize_dict_floats(r) for r in actual_results])
 
+  @patch('apache_beam.io.BigQuerySink')
+  @patch('apache_beam.io.BigQuerySource')
+  def testNonMatchingNotes(self, mock_bq_source_fn, mock_bq_sink_fn):
+    # Pipeline raises an exception if the note text does not match the golden
+    # note text.
+
+    def make_sink(table_name, schema, write_disposition):  # pylint: disable=unused-argument
+      return beam_testutil.FakeSink(table_name)
+    mock_bq_sink_fn.side_effect = make_sink
+
+    xml_text_template = """<?xml version="1.0" encoding="UTF-8" ?>
+<InspectPhiTask>
+<TEXT><![CDATA[{0}]]></TEXT>
+<TAGS></TAGS></InspectPhiTask>
+"""
+
+    mock_bq_source_fn.return_value = beam_testutil.FakeSource()
+    mock_bq_source_fn.return_value._records = [
+        {'findings_record_id': '111-1',
+         'findings_xml': xml_text_template.format('some text'),
+         'golden_xml': xml_text_template.format('different text')}]
+
+    (input_pattern, golden_dir, results_dir, per_note_table, debug_table,
+     types_to_ignore, pipeline_args) = None, None, None, None, None, None, None
+    mae_input_query = 'SELECT * from [project.dataset.table]'
+    mae_golden_table = 'project.dataset.golden_table'
+    self.assertRaisesRegexp(
+        Exception, 'Note text is different from golden for record \"111-1\"',
+        run_pipeline_lib.run_pipeline,
+        input_pattern, golden_dir, results_dir, mae_input_query,
+        mae_golden_table, False, 'results_table', per_note_table, debug_table,
+        types_to_ignore, pipeline_args)
+
   @patch('eval.run_pipeline_lib._get_utcnow')
   @patch('apache_beam.io.BigQuerySink')
   @patch('google.cloud.storage.Client')

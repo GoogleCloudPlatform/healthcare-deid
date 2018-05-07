@@ -39,15 +39,15 @@ def _get_utcnow():
 def _get_findings_from_text(raw_text, types_to_ignore):
   """Convert MAE xml to eval_lib.Finding objects."""
   tree = XmlTree.fromstring(raw_text)
-  text = tree.find('TEXT').text
+  note_text = tree.find('TEXT').text
   findings = set()
   if tree.find('TAGS') is not None:
     for tag_elem in tree.find('TAGS'):
       if tag_elem.tag in types_to_ignore:
         continue
       findings.add(eval_lib.Finding.from_tag(
-          tag_elem.tag, tag_elem.get('spans'), text))
-  return findings
+          tag_elem.tag, tag_elem.get('spans'), note_text))
+  return findings, note_text
 
 
 def _get_findings_from_file(filename, storage_client, types_to_ignore):
@@ -63,8 +63,14 @@ def _get_findings_from_file(filename, storage_client, types_to_ignore):
   return _get_findings_from_text(contents, types_to_ignore)
 
 
-def compare_findings(findings, golden_findings, record_id):
+def compare_findings(findings, golden_findings, record_id, note_text,
+                     golden_note_text):
+  """Compare findings against goldens."""
   logging.info('Running comparison for record "%s"', record_id)
+
+  if note_text != golden_note_text:
+    raise Exception(
+        'Note text is different from golden for record "{}".'.format(record_id))
 
   strict_entity_results = eval_lib.strict_entity_compare(
       findings, golden_findings, record_id)
@@ -86,14 +92,17 @@ def compare_bq_row(row, types_to_ignore):
   Raises:
     Exception: If golden_xml doesn't exist.
   """
-  findings = _get_findings_from_text(row['findings_xml'], types_to_ignore)
+  findings, note_text = _get_findings_from_text(row['findings_xml'],
+                                                types_to_ignore)
   if 'golden_xml' not in row or row['golden_xml'] is None:
     raise Exception(
         'No golden found for record %s.' % row['findings_record_id'])
-  golden_findings = _get_findings_from_text(row['golden_xml'], types_to_ignore)
+  golden_findings, golden_note_text = _get_findings_from_text(row['golden_xml'],
+                                                              types_to_ignore)
   record_id = row['findings_record_id']
 
-  return compare_findings(findings, golden_findings, record_id)
+  return compare_findings(findings, golden_findings, record_id, note_text,
+                          golden_note_text)
 
 
 def compare(filename, golden_dir, types_to_ignore):
@@ -113,14 +122,16 @@ def compare(filename, golden_dir, types_to_ignore):
   golden_file = gcsutil.GcsFileName.from_path(
       posixpath.join(golden_dir, posixpath.basename(filename.blob)))
 
-  findings = _get_findings_from_file(filename, storage_client, types_to_ignore)
-  golden_findings = _get_findings_from_file(
+  findings, note_text = _get_findings_from_file(
+      filename, storage_client, types_to_ignore)
+  golden_findings, golden_note_text = _get_findings_from_file(
       golden_file, storage_client, types_to_ignore)
   record_id = posixpath.basename(filename.blob)
   if record_id.endswith('.xml'):
     record_id = record_id[:-4]
 
-  return compare_findings(findings, golden_findings, record_id)
+  return compare_findings(findings, golden_findings, record_id, note_text,
+                          golden_note_text)
 
 
 class _MacroStats(object):
