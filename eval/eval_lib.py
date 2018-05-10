@@ -233,10 +233,12 @@ def count_matches(findings, golden_findings, record_id, strict, ignore_type):
       if strict:
         result.debug_info.append({
             'record_id': record_id,
-            'error_type': 'false_positive',
+            'classification': 'false_positive',
             'text': finding.text,
             'context': finding.context(),
-            'info_type': finding.category
+            'info_type': finding.category,
+            'start': finding.start,
+            'end': finding.end
         })
       if not ignore_type:
         result.per_type[finding.category].false_positives += 1
@@ -247,10 +249,12 @@ def count_matches(findings, golden_findings, record_id, strict, ignore_type):
       if not strict:
         result.debug_info.append({
             'record_id': record_id,
-            'error_type': 'false_positive',
+            'classification': 'false_positive',
             'text': finding.text,
             'context': finding.context(),
-            'info_type': finding.category
+            'info_type': finding.category,
+            'start': finding.start,
+            'end': finding.end
         })
       if ignore_type:
         result.per_type[finding.category].false_positives += 1
@@ -265,7 +269,7 @@ def count_matches(findings, golden_findings, record_id, strict, ignore_type):
       if strict:
         result.debug_info.append({
             'record_id': record_id,
-            'error_type': 'false_negative',
+            'classification': 'false_negative',
             'text': golden_finding.text,
             'context': golden_finding.context(),
             'info_type': golden_finding.category
@@ -276,6 +280,16 @@ def count_matches(findings, golden_findings, record_id, strict, ignore_type):
 
     if ((strict and golden_finding.has_same_indices_as_any_of(findings)) or
         (not strict and golden_finding.intersects(findings))):
+      if not strict:
+        result.debug_info.append({
+            'record_id': record_id,
+            'classification': 'true_positive',
+            'text': golden_finding.text,
+            'context': golden_finding.context(),
+            'info_type': golden_finding.category,
+            'start': golden_finding.start,
+            'end': golden_finding.end
+        })
       result.typeless.true_positives += 1
       if ignore_type:
         result.per_type[golden_finding.category].true_positives += 1
@@ -284,10 +298,12 @@ def count_matches(findings, golden_findings, record_id, strict, ignore_type):
       if not strict:
         result.debug_info.append({
             'record_id': record_id,
-            'error_type': 'false_negative',
+            'classification': 'false_negative',
             'text': golden_finding.text,
             'context': golden_finding.context(),
-            'info_type': golden_finding.category
+            'info_type': golden_finding.category,
+            'start': golden_finding.start,
+            'end': golden_finding.end
         })
       if ignore_type:
         result.per_type[golden_finding.category].false_negatives += 1

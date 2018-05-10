@@ -352,8 +352,9 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
          beam.FlatMap(format_debug_info, now) |
          'write_debug_info' >> beam.io.Write(beam.io.BigQuerySink(
              debug_output_table,
-             schema=('record_id:STRING,error_type:STRING,info_type:STRING,'
-                     'text:STRING,context:STRING,timestamp:TIMESTAMP'),
+             schema=('record_id:STRING,classification:STRING,info_type:STRING,'
+                     'text:STRING,context:STRING,start:INTEGER,end:INTEGER,'
+                     'timestamp:TIMESTAMP'),
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
 
   if per_note_results_table:

@@ -256,21 +256,32 @@ class RunPipelineLibTest(unittest.TestCase):
     self.assertEqual([normalize_dict_floats(r) for r in expected_results],
                      [normalize_dict_floats(r) for r in actual_results])
 
+    full_text = 'word1   w2 w3  wrd4 5 word6   word7 multi token entity w8'
+    def debug_info(record_id, classification, text, info_type, start, end):
+      location = full_text.find(text)
+      context = (full_text[0:location] + '{[--' + text + '--]}' +
+                 full_text[location + len(text):])
+      return {'record_id': record_id, 'classification': classification,
+              'text': text, 'info_type': info_type, 'context': context,
+              'start': start, 'end': end}
     expected_debug_info = [
-        {'record_id': '1-1', 'error_type': 'false_negative', 'text': 'wrd4',
-         'info_type': 'TypeA', 'context':
-         'word1   w2 w3  {[--wrd4--]} 5 word6   word7 multi token entity w8'},
-        {'record_id': '1-1', 'error_type': 'false_negative', 'text': 'w3',
-         'info_type': 'TypeA', 'context':
-         'word1   w2 {[--w3--]}  wrd4 5 word6   word7 multi token entity w8'},
-        {'record_id': '1-1', 'error_type': 'false_positive', 'text': 'w2',
-         'info_type': 'TypeA', 'context':
-         'word1   {[--w2--]} w3  wrd4 5 word6   word7 multi token entity w8'}]
+        debug_info('1-1', 'true_positive', 'word1', 'TypeA', 0, 5),
+        debug_info('1-1', 'false_positive', 'w2', 'TypeA', 8, 10),
+        debug_info('1-1', 'false_negative', 'w3', 'TypeA', 11, 13),
+        debug_info('1-1', 'false_negative', 'wrd4', 'TypeA', 15, 19),
+        debug_info('1-2', 'true_positive', 'word1', 'TypeA', 0, 5),
+        debug_info('1-2', 'true_positive', '5', 'TypeB', 20, 21),
+        debug_info('1-2', 'true_positive', 'word7', 'TypeY', 30, 35),
+        debug_info('1-2', 'true_positive', 'multi', 'TypeA', 36, 41),
+        debug_info('1-2', 'true_positive', 'token', 'TypeA', 42, 47),
+        debug_info('1-2', 'true_positive', 'entity', 'TypeA', 48, 54),
+    ]
     for r in expected_debug_info:
       r.update({'timestamp': now})
-    self.assertEqual(expected_debug_info,
-                     sorted(beam_testutil.get_table('debug_output_table'),
-                            key=lambda x: x['context']))
+    def s(l):
+      return sorted(l, key=lambda x: x['record_id'] + x['context'])
+    self.assertEqual(s(expected_debug_info),
+                     s(beam_testutil.get_table('debug_output_table')))
 
     expected_per_note = [
         {'record_id': '1-1', 'precision': 0.5, 'recall': 0.3333333333333333,
