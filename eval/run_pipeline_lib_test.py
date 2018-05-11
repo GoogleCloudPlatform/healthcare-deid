@@ -346,6 +346,19 @@ stats {
     self.assertEqual([expected_result1, expected_result2],
                      actual_results)
 
+  def testCompareFindings(self):
+    # Test that we don't throw an exception when there is a difference of one
+    # trailing character.
+    run_pipeline_lib.compare_findings([], [], 'id', 'note text', 'note text\n')
+    run_pipeline_lib.compare_findings([], [], 'id', 'note text\n', 'note text')
+    self.assertRaisesRegexp(
+        Exception, 'Note text is different from golden for record \"123\"',
+        run_pipeline_lib.compare_findings, [], [], '123', 'note text',
+        'some other note text')
+    self.assertRaisesRegexp(
+        Exception, 'Note text is different from golden for record \"123\"',
+        run_pipeline_lib.compare_findings, [], [], '123', 'note text',
+        'note text for longer note')
 
 if __name__ == '__main__':
   unittest.main()

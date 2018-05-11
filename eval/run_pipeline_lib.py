@@ -69,8 +69,16 @@ def compare_findings(findings, golden_findings, record_id, note_text,
   logging.info('Running comparison for record "%s"', record_id)
 
   if note_text != golden_note_text:
-    raise Exception(
-        'Note text is different from golden for record "{}".'.format(record_id))
+    # If the only difference is a single trailing character, ignore it.
+    if ((len(note_text) == len(golden_note_text) + 1 and
+         note_text.startswith(golden_note_text)) or
+        (len(golden_note_text) == len(note_text) + 1 and
+         golden_note_text.startswith(note_text))):
+      pass
+    else:
+      raise Exception(
+          'Note text is different from golden for record "{}".'.format(
+              record_id))
 
   strict_entity_results = eval_lib.strict_entity_compare(
       findings, golden_findings, record_id)
