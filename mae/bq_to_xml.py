@@ -29,7 +29,7 @@ def run(input_query, output_dir, task_name, id_columns, target_column):
   results_table = query_job.result()
 
   for row in results_table:
-    id_str = '-'.join([row.get(col) for col in id_columns])
+    id_str = '-'.join([str(row.get(col)) for col in id_columns])
     filename = os.path.join(output_dir, id_str + '.xml')
     with codecs.open(filename, 'w', encoding='utf-8') as f:
       f.write(TEMPLATE.format(task_name, row.get(target_column)))
