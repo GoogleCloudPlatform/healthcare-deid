@@ -33,6 +33,18 @@ py_library(
 )
 
 py_binary(
+    name = "redact_image",
+    srcs = ["redact_image.py"],
+    deps = [":run_deid_lib"],
+)
+
+py_binary(
+    name = "inspect_dicom",
+    srcs = ["inspect_dicom.py"],
+    deps = [":run_deid_lib"],
+)
+
+py_binary(
     name = "run_deid",
     srcs = ["run_deid.py"],
     deps = [
