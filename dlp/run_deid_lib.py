@@ -27,6 +27,7 @@ import collections
 import copy
 import json
 import logging
+import os
 import posixpath
 import time
 import uuid
@@ -52,7 +53,7 @@ def _get_index(column_name, headers):
   return -1
 
 
-def _request_with_retry(fn, num_retries=5):
+def request_with_retry(fn, num_retries=5):
   """Makes a service request; and retries if needed."""
   for attempt in xrange(num_retries):
     try:
@@ -231,7 +232,7 @@ def deid(rows, credentials, project, deid_config, inspect_config,
   }
   parent = 'projects/{0}'.format(project)
   try:
-    response = _request_with_retry(
+    response = request_with_retry(
         content.deidentify(body=req_body, parent=parent).execute)
   except errors.HttpError as error:
     error_json = json.loads(error.content)
@@ -336,7 +337,7 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
   }
 
   parent = 'projects/{0}'.format(project)
-  response = _request_with_retry(
+  response = request_with_retry(
       content.inspect(body=req_body, parent=parent).execute)
   truncated = 'findingsTruncated'
   if truncated in response['result'] and response['result'][truncated]:
@@ -408,14 +409,22 @@ def write_mae(mae_result, storage_client_fn, mae_dir):
   blob.upload_from_string(mae_result.mae_xml)
 
 
-def write_dtd(storage_client_fn, mae_dir, mae_tag_categories, task_name):
+def _write_dtd_to_gcs(storage_client_fn, outdir, mae_tag_categories, task_name):
   """Write the DTD config file."""
   storage_client = storage_client_fn()
   dtd_contents = mae.generate_dtd(mae_tag_categories, task_name)
-  bucket_name, blob_dir = split_gcs_name(mae_dir)
+  bucket_name, blob_dir = split_gcs_name(outdir)
   bucket = storage_client.get_bucket(bucket_name)
   blob = bucket.blob(posixpath.join(blob_dir, 'classification.dtd'))
   blob.upload_from_string(dtd_contents)
+
+
+def _write_dtd(storage_client_fn, outdir, mae_tag_categories, task_name):
+  if outdir.startswith('gs://'):
+    return _write_dtd_to_gcs(
+        storage_client_fn, outdir, mae_tag_categories, task_name)
+  with open(os.path.join(outdir, 'classification.dtd'), 'w') as f:
+    f.write(mae.generate_dtd(mae_tag_categories, task_name))
 
 
 def _is_custom_type(type_name, per_row_types, inspect_config):
@@ -591,6 +600,9 @@ def generate_configs(config_text, input_query=None, input_table=None,
 def _load_per_dataset_types(per_dataset_cfg, input_query, input_table,
                             bq_client, bq_config_fn):
   """Load data that applies to the whole dataset as custom info types."""
+  if not input_query and not input_table:
+    return []
+
   custom_info_types = []
 
   saved_query_objects = []
@@ -766,10 +778,10 @@ def _get_reads(p, input_table, input_query, bq_client, bq_config_fn,
 def run_pipeline(input_query, input_table, deid_table, findings_table,
                  mae_dir, mae_table, deid_config_file, task_name, credentials,
                  project, storage_client_fn, bq_client, bq_config_fn,
-                 dlp_api_name, batch_size, pipeline_args):
+                 dlp_api_name, batch_size, dtd_dir, pipeline_args):
   """Read the records from BigQuery, DeID them, and write them to BigQuery."""
-  if (input_query is None) == (input_table is None):
-    return 'Exactly one of input_query and input_table must be set.'
+  if (input_query is None) == (input_table is None) and not dtd_dir:
+    return ['Exactly one of input_query and input_table must be set.']
   config_text = ''
   if deid_config_file:
     with open(deid_config_file) as f:
@@ -778,6 +790,11 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
    pass_through_columns, target_columns, field_transform_columns) = (
        generate_configs(config_text, input_query, input_table, bq_client,
                         bq_config_fn))
+
+  if dtd_dir:
+    _write_dtd(storage_client_fn, dtd_dir, mae_tag_categories, task_name)
+    if (input_query is None) == (input_table is None):
+      return []
 
   if len(target_columns) > 1 and (mae_dir or mae_table):
     raise Exception(
@@ -813,7 +830,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if mae_dir:
     if not mae_dir.startswith('gs://'):
       return ['--mae_dir must be a GCS path starting with "gs://".']
-    write_dtd(storage_client_fn, mae_dir, mae_tag_categories, task_name)
+    _write_dtd(storage_client_fn, mae_dir, mae_tag_categories, task_name)
   mae_data = None
   if mae_dir or mae_table:
     if not key_columns:
@@ -867,6 +884,9 @@ def add_all_args(parser):
                       help='BigQuery table to store DeID\'d data.')
   parser.add_argument('--findings_table', type=str, required=False,
                       help='BigQuery table to store DeID summary data.')
+  parser.add_argument('--dtd_dir', type=str,
+                      help=('Write an MAE DTD file to the given directory ('
+                            'GCS or local).'))
   parser.add_argument('--mae_dir', type=str, required=False,
                       help=('GCS directory to store inspect() results in MAE '
                             'format.'))

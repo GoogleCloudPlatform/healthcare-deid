@@ -18,22 +18,36 @@ permissions follow HIPPA guidelines.
   for your project with the "BigQuery User" role.
 * Ensure the service account has access to the BigQuery tables and GCS buckets
   you will be using.
+  * For GCS, grant the "Storage Legacy Bucket Writer" role for any bucket it
+    needs to write to, e.g.:
+
+    ```shell
+    gsutil acl ch -u ${SERVICE_ACCOUNT_EMAIL:?}:WRITER gs://${BUCKET_NAME:?}
+    ```
+  * For BigQuery, give the service account "read" access to any datasets it
+    needs to read, and "edit" access to any datasets it needs to write to.
 * Grant the `serviceusage.services.use` permission to your service account. You
    can do this by giving the service account the OWNER or EDITOR role, or by
    [creating a custom role](https://console.cloud.google.com/iam-admin/roles)
    with the permission, and then [granting that custom](https://console.cloud.google.com/iam-admin/iam)
-   role to the service account.
+   role to the service account, or by granting the serviceUsageConsumer role:
+
+   ```shell
+   gcloud projects add-iam-policy-binding ${PROJECT:?} \
+     --member serviceAccount:${SERVICE_ACCOUNT_EMAIL:?} \
+     --role roles/serviceusage.serviceUsageConsumer
+   ```
 * Generate service account credentials:
 
-```shell
-gcloud iam service-accounts keys create --iam-account SERVICE_ACCOUNT_EMAIL_ADDRESS ~/key.json
-```
+  ```shell
+  gcloud iam service-accounts keys create --iam-account SERVICE_ACCOUNT_EMAIL_ADDRESS ~/key.json
+  ```
 
 * Specify the credentials in the GOOGLE_APPLICATION_CREDENTIALS environment
   variable:
 
-```shell
-export GOOGLE_APPLICATION_CREDENTIALS=~/key.json
+  ```shell
+  export GOOGLE_APPLICATION_CREDENTIALS=~/key.json
 ```
 
 ### Dependencies
@@ -88,7 +102,7 @@ bazel-bin/dlp/run_deid \
   --deid_config_file dlp/sample_deid_config.json \
   --deid_table ${PROJECT?}:${DATASET?}.deid_output \
   --findings_table ${PROJECT?}:${DATASET?}.dlp_findings \
-  --mae_dir gs://bucket-name/mae-output-directory
+  --mae_table ${PROJECT:?}:${DATASET:?}.mae
 ```
 
 To run in parallel on Google Cloud Dataflow, add:

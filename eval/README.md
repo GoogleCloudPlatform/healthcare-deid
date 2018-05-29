@@ -1,7 +1,6 @@
 # Evaluation Pipeline
 
-This package contains a tool to run compare the findings of the DLP pipeline (
-dlp/README.md) to 'golden' human-annotated findings. The
+This package contains a tool to run compare the findings of the [DLP pipeline](../dlp/README.md) to 'golden' human-annotated findings. The
 example commands use the [bazel build
 system](http://bazel.build/versions/master/docs/install.html), but can also be
 run directly (i.e.`python dlp/xxx.py`) if $PYTHONPATH includes this package.
@@ -58,7 +57,20 @@ source env/bin/activate
 pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-bigquery google-auth-httplib2 google-cloud-storage six==1.10.0
 ```
 
+## Annotating Goldens
+
+Use the [bq_to_xml tool](../mae/README.md#downloading-notes-from-bigquery) to download your data from BigQuery and write it to
+MAE-compatible XML files. You can then annotate the notes using the [MAE
+Annotation Tool](https://github.com/keighrim/mae-annotation/releases), and upload
+the results to BigQuery using [upload_files_to_bq](../mae/README.md#uploading-xml-files-to-bigquery).
+
 ## Running the pipeline
+
+### BigQuery Input
+If --mae_input_query and --mae_golden_table are specified, the input xml comes
+from the specified BigQuery query, which is left-joined on record_id with data
+from mae_golden_table. The input query and golden table must both have
+`record_id` and `xml` fields.
 
 ### GCS Input
 If --mae_input_pattern and --mae_golden_dir are specified, the pipeline takes as
@@ -66,12 +78,6 @@ input a pattern indicating which findings to compare, and a directory containing
 "golden" findings to comare against. It is expected that the findings are in MAE
 format (see dlp/README.md) and that each file matching the pattern will have a
 counterpart with the same name in --mae_golden_dir.
-
-### BigQuery Input
-If --mae_input_query and --mae_golden_table are specified, the input xml comes
-from the specified BigQuery query, which is left-joined on record_id with data
-from mae_golden_table. The input query and golden table must both have
-`record_id` and `xml` fields.
 
 ### XML format for strict entity matching
 Note that for strict entity matching to work, the .dtd files used to create the

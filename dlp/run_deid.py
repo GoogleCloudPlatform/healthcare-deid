@@ -64,7 +64,7 @@ def main():
       args.input_query, args.input_table, args.deid_table, args.findings_table,
       args.mae_dir, args.mae_table, args.deid_config_file, args.mae_task_name,
       credentials, default_project, storage.Client, bq_client, bq_config_fn,
-      args.dlp_api_name, args.batch_size, pipeline_args)
+      args.dlp_api_name, args.batch_size, args.dtd_dir, pipeline_args)
 
   if errors:
     logging.error(errors)

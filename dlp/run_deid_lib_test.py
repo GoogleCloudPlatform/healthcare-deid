@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from functools import partial
 import json
 import os
+import tempfile
 import unittest
 
 from apiclient import errors
@@ -188,11 +189,12 @@ class RunDeidLibTest(unittest.TestCase):
     bq_client.run_async_query.return_value = query_job
 
     deid_cfg = os.path.join(TESTDATA_DIR, 'testdata/config.json')
+    dtd_dir = tempfile.mkdtemp()
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg, 'InspectPhiTask',
         'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
-        None, 'dlp', batch_size=1, pipeline_args=None)
+        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/request.json')) as f:
@@ -214,6 +216,8 @@ class RunDeidLibTest(unittest.TestCase):
       self.assertEqual(
           testutil.get_gcs_file('mae-bucket/mae-dir/classification.dtd'),
           contents)
+      with open(os.path.join(dtd_dir, 'classification.dtd')) as local_dtd:
+        self.assertEqual(local_dtd.read(), contents)
 
     self.assertEqual(
         beam_testutil.get_table('deid_tbl'),
@@ -282,7 +286,7 @@ class RunDeidLibTest(unittest.TestCase):
         'input_query', None, 'deid_tbl', 'findings_tbl',
         mae_dir, mae_table, deid_cfg_file, 'InspectPhiTask', 'fake-credentials',
         'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
-        batch_size=1, pipeline_args=None)
+        batch_size=1, dtd_dir=None, pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(
@@ -354,7 +358,7 @@ class RunDeidLibTest(unittest.TestCase):
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_file, 'InspectPhiTask',
         'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
-        None, 'dlp', batch_size=2, pipeline_args=None)
+        None, 'dlp', batch_size=2, dtd_dir=None, pipeline_args=None)
 
     expected_request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
@@ -447,7 +451,7 @@ class RunDeidLibTest(unittest.TestCase):
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_file, 'InspectPhiTask',
         'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
-        None, 'dlp', batch_size=2, pipeline_args=None)
+        None, 'dlp', batch_size=2, dtd_dir=None, pipeline_args=None)
 
     expected_request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
@@ -514,6 +518,33 @@ class RunDeidLibTest(unittest.TestCase):
 
     self.maxDiff = 3000
     self.assertEqual(gen, expected)
+
+  def testGenerateDtdLocal(self):
+    deid_cfg = os.path.join(TESTDATA_DIR, 'testdata/config.json')
+    dtd_dir = tempfile.mkdtemp()
+    run_deid_lib.run_pipeline(
+        None, None, None, None, None, None, deid_cfg, 'InspectPhiTask',
+        'fake-credentials', 'project', testutil.FakeStorageClient, None,
+        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, pipeline_args=None)
+
+    with open(
+        os.path.join(TESTDATA_DIR, 'mae_testdata', 'sample.dtd')) as f:
+      with open(os.path.join(dtd_dir, 'classification.dtd')) as generated_dtd:
+        self.assertEqual(generated_dtd.read(), f.read())
+
+  def testGenerateDtdGcs(self):
+    deid_cfg = os.path.join(TESTDATA_DIR, 'testdata/config.json')
+    dtd_dir = 'gs://dtd-dir'
+    run_deid_lib.run_pipeline(
+        None, None, None, None, None, None, deid_cfg, 'InspectPhiTask',
+        'fake-credentials', 'project', testutil.FakeStorageClient, None,
+        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, pipeline_args=None)
+
+    with open(
+        os.path.join(TESTDATA_DIR, 'mae_testdata', 'sample.dtd')) as f:
+      self.assertEqual(testutil.get_gcs_file('dtd-dir/classification.dtd'),
+                       f.read())
+
 
 if __name__ == '__main__':
   unittest.main()
