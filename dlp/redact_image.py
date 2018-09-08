@@ -26,6 +26,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from apiclient import discovery
 from apiclient import errors
 from dlp import run_deid_lib
@@ -37,12 +38,15 @@ def main():
 
   parser = argparse.ArgumentParser(
       description='Run Data Loss Prevention (DLP) Imagine DeID.')
-  parser.add_argument('--image_file', type=str, required=False,
-                      help=('Path to an image file.'))
+  parser.add_argument('--image_dir', type=str, required=False,
+                      help=('Path to an image dir.'))
   parser.add_argument(
       '--dicom_file', type=str, required=False, help=('Path to a dicom file.'))
   parser.add_argument(
-      '--redact_file', type=str, required=False, help=('Path to redacted file'))
+      '--redact_dir', type=str, required=False, help=('Path to source dir'))
+  parser.add_argument(
+      '--count_area', type=bool, required=False, default=False,
+      help=('Whether to count pixel'))
 
   args, _ = parser.parse_known_args(sys.argv[1:])
 
@@ -53,17 +57,42 @@ def main():
   credentials, project = google.auth.default()
 
   image_bytes = ''
-  if args.image_file:
-    with open(args.image_file, 'rb') as image_file:
-      image_bytes = base64.b64encode(image_file.read()).rstrip('\n')
+  dlp = discovery.build(
+      'dlp', 'v2', credentials=credentials, cache_discovery=False)
 
-  if args.dicom_file:
+  if args.image_dir:
+    file_count = 0
+    word_count = 0
+    for filename in os.listdir(args.image_dir):
+      source_filename = os.path.join(args.image_dir, filename)
+      dest_filename = os.path.join(args.redact_dir, filename)
+      with open(source_filename, 'rb') as image_file:
+        image_bytes = base64.b64encode(image_file.read()).rstrip('\n')
+      text, area = get_deid_result(
+          dest_filename, image_bytes, dlp, project, args)
+      logging.info('DLP detected %s words in %s',
+                   len(text.split()), source_filename)
+      file_count += 1
+      word_count += len(text.split())
+      time.sleep(0.5)
+
+    logging.info('DLP detected %s words in %s files', word_count, file_count)
+
+  elif args.dicom_file:
     dicom_byte = subprocess.check_output(
         ['dcmj2pnm', args.dicom_file, '--write-png'])
     image_bytes = base64.b64encode(dicom_byte)
+    filename = '/tmp/tmp1.jpg'
+    text, area = get_deid_result(filename, image_bytes, dlp, project, args)
+    logging.info(
+        'DLP detected %s words, output image: %s',
+        len(text.split()), filename)
+    if area > 0:
+      logging.info('and covering at least %s pixels', area)
 
-  dlp = discovery.build(
-      'dlp', 'v2', credentials=credentials, cache_discovery=False)
+
+def get_deid_result(filename, image_bytes, dlp, project, args):
+  """Call DeID library and returns the detected text, and pixel size."""
   projects = dlp.projects()
   image = projects.image()
   content = projects.content()
@@ -150,39 +179,41 @@ def main():
   if 'error' in response:
     raise Exception('Redact() failed: {}'.format(response['error']))
 
-  text = response['extractedText']
-  imgdata = base64.b64decode(response['redactedImage'])
-  filename = '/tmp/tmp.jpg'
-  if args.redact_file:
-    filename = args.redact_file
-  with open(filename, 'wb') as f:
-    f.write(imgdata)
-
   try:
-    inspect = run_deid_lib.request_with_retry(
-        content.inspect(body=content_req_body, parent=parent).execute)
-  except errors.HttpError as error:
-    raise error
-  if 'error' in inspect:
-    raise Exception('Inspect() failed: {}'.format(inspect['error']))
+    text = response['extractedText']
+    imgdata = base64.b64decode(response['redactedImage'])
+    with open(filename, 'wb') as f:
+      f.write(imgdata)
+  except KeyError:
+    with open(filename, 'wb') as f:
+      f.write(image_bytes)
+    return '', 0
 
   # inspect call only returns info of findings. Texts that do not match any
   # info type are not included.
   area = 0
-  if inspect['result']:
-    findings = inspect['result']['findings']
-    for finding in findings:
-      locations = finding['location']['contentLocations']
-      for location in locations:
-        boxes = location['imageLocation']['boundingBoxes']
-        for box in boxes:
-          area += int(box['width']) * int(box['height'])
-  else:
-    logging.info('No inspect findings.')
 
-  logging.info(
-      'DLP detected %s words, covering at least %s pixels, output image: %s',
-      len(text.split()), area, filename)
+  if args.count_area:
+    try:
+      inspect = run_deid_lib.request_with_retry(
+          content.inspect(body=content_req_body, parent=parent).execute)
+    except errors.HttpError as error:
+      raise error
+    if 'error' in inspect:
+      raise Exception('Inspect() failed: {}'.format(inspect['error']))
+
+    if inspect['result']:
+      findings = inspect['result']['findings']
+      for finding in findings:
+        locations = finding['location']['contentLocations']
+        for location in locations:
+          boxes = location['imageLocation']['boundingBoxes']
+          for box in boxes:
+            area += int(box['width']) * int(box['height'])
+    else:
+      logging.info('No inspect findings.')
+
+  return text, area
 
 
 if __name__ == '__main__':

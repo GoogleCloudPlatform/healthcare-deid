@@ -48,7 +48,7 @@ permissions follow HIPPA guidelines.
 
   ```shell
   export GOOGLE_APPLICATION_CREDENTIALS=~/key.json
-```
+  ```
 
 ### Dependencies
 

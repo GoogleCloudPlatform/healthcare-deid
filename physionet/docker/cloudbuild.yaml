@@ -1,6 +1,6 @@
-# Google Container Builder config for building a docker container with
+# Google Cloud Build config for building a docker container with
 # physionet DeID. Sample usage:
-#  gcloud container builds submit . --config=cloudbuild.yaml \
+#  gcloud builds submit . --config=cloudbuild.yaml \
 #  --project=genomics-api-test --substitutions="_PHYSIONET_VERSION=1.1"
 
 steps:

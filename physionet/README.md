@@ -14,7 +14,7 @@ project can use.
 ```shell
 cd physionet/docker/
 
-gcloud container builds submit . --config=cloudbuild.yaml \
+gcloud builds submit . --config=cloudbuild.yaml \
   --substitutions="_PHYSIONET_VERSION=1.1" --project=${PROJECT?}
 ```
 

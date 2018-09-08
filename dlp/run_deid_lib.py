@@ -235,7 +235,11 @@ def deid(rows, credentials, project, deid_config, inspect_config,
     response = request_with_retry(
         content.deidentify(body=req_body, parent=parent).execute)
   except errors.HttpError as error:
-    error_json = json.loads(error.content)
+    try:
+      error_json = json.loads(error.content)
+    except (TypeError, ValueError):
+      logging.error('Unable to parse JSON from deidentify HttpError content: '
+                    '%s', error)
     if (error.resp.status != 400 or
         'Retry with a smaller request.' not in error_json['error']['message'] or
         len(rows) == 1):
@@ -369,8 +373,8 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
     retvals.append(ret)
   if 'findings' in response['result']:
     for finding in response['result']['findings']:
-        # More complicated types, like an image within a pdf, may have multiple
-        # contentLocations, but our simple table will only have one.
+      # More complicated types, like an image within a pdf, may have multiple
+      # contentLocations, but our simple table will only have one.
       content_location = finding['location']['contentLocations'][0]
       table_location = content_location['recordLocation']['tableLocation']
       if not table_location:
@@ -532,7 +536,11 @@ def generate_configs(config_text, input_query=None, input_table=None,
   mae_tag_categories = {}
   per_row_types = []
   key_columns = []
-  cfg = json.loads(config_text, object_pairs_hook=collections.OrderedDict)
+  try:
+    cfg = json.loads(config_text, object_pairs_hook=collections.OrderedDict)
+  except (TypeError, ValueError):
+    logging.error('JSON parsing of DeID config file failed.')
+    raise Exception('Invalid JSON DeID Config.')
   if 'tagCategories' in cfg:
     mae_tag_categories = cfg['tagCategories']
   if 'keyColumns' in cfg:
