@@ -57,11 +57,13 @@ py_test(
     name = "run_deid_lib_test",
     srcs = ["run_deid_lib_test.py"],
     data = [
+        "//dlp:sample_deid_config.json",
         "//dlp/mae_testdata:sample.dtd",
         "//dlp/mae_testdata:sample.xml",
         "//dlp/testdata:batch_config.json",
         "//dlp/testdata:batch_request.json",
         "//dlp/testdata:config.json",
+        "//dlp/testdata:input.csv",
         "//dlp/testdata:multi_column_config.json",
         "//dlp/testdata:multi_column_request.json",
         "//dlp/testdata:request.json",

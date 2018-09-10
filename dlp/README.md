@@ -79,15 +79,20 @@ pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-big
 
 ## Running the pipeline
 
-The pipeline takes as input a table with the columns specified in the "columns"
-section of the config file. You may also provide a query that generates matching
-rows (using --input_query), but note that this causes the data to be stored in a
-temporary table which does not have data locality guarantees.
+The pipeline supports three types of input:
+1. `--input_table`: a reference to a BigQuery table.
+2. `--input_query`: a query that generates matching rows. Note that this causes the data to be stored in a temporary table which does not have data locality guarantees.
+3. `--input_csv`: a local path to a csv file.
+
+Exactly one input type must be specified. The columns in the input method should
+match the "columns" section in the config file.
 
 The output is written to several places, depending on which flags are provided:
 
 * --deid_table holds the deidentified notes from the deidentify call to the DLP
   API.
+* --output_csv saves the deidentified notes from the deidentify call to the DLP
+  API to a local csv file.
 * --findings_table holds the findings of PII identified from calling inspect on
   the DLP API.
 * --mae_dir holds the findings in MAE format in GCS.

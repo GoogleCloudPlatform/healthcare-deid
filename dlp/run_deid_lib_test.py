@@ -113,6 +113,15 @@ class RunDeidLibTest(unittest.TestCase):
     self.assertEqual(table_to_schema[table_name], schema)
     return beam_testutil.FakeSink(table_name)
 
+  def make_csv_output(self, file_path_prefix,
+                      file_name_suffix='',
+                      append_trailing_newlines=True, num_shards=0,
+                      shard_name_template=None, coder=None,
+                      compression_type='auto', header=None):
+    # pylint: disable=unused-argument
+
+    return beam_testutil.DummyWriteTransform(file_path_prefix)
+
   @patch('apiclient.discovery.build')
   def testDeidError(self, mock_build_fn):
     deid_response = {
@@ -194,7 +203,8 @@ class RunDeidLibTest(unittest.TestCase):
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg, 'InspectPhiTask',
         'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
-        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, pipeline_args=None)
+        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, input_csv=None,
+        output_csv=None, pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/request.json')) as f:
@@ -227,6 +237,36 @@ class RunDeidLibTest(unittest.TestCase):
         beam_testutil.get_table('findings_tbl'),
         [{'patient_id': '111', 'record_number': '1',
           'findings': str(findings)}])
+
+  @patch('apiclient.discovery.build')
+  @patch('apache_beam.io.textio.WriteToText')
+  def testCSV(self, mock_w2t_fn, mock_build_fn):
+    mock_w2t_fn.side_effect = partial(self.make_csv_output)
+
+    deid_response = {'item': {'table': {
+        'rows': [{'values': [{'stringValue': 'deid_resp_val'}]}],
+        'headers': [{'name': 'note'}]
+    }}}
+    fake_content = Mock()
+    fake_content.deidentify.return_value = Mock(
+        execute=Mock(return_value=deid_response))
+    fake_projects = Mock(content=Mock(return_value=fake_content))
+    fake_dlp = Mock(projects=Mock(return_value=fake_projects))
+    mock_build_fn.return_value = fake_dlp
+
+    deid_cfg = os.path.join(TESTDATA_DIR, 'sample_deid_config.json')
+    input_csv = os.path.join(TESTDATA_DIR, 'testdata/input.csv')
+    run_deid_lib.run_pipeline(
+        None, None, None, None,
+        None, None, deid_cfg, 'InspectPhiTask',
+        'fake-credentials', 'project', testutil.FakeStorageClient, None,
+        None, 'dlp', batch_size=1, dtd_dir=None, input_csv=input_csv,
+        output_csv='output-csv', pipeline_args=None)
+
+    fake_content.deidentify.assert_called_once()
+    self.assertEqual(
+        testutil.get_gcs_file('output-csv').strip(),
+        '222,1,deid_resp_val')
 
   @patch('apiclient.discovery.build')
   @patch('apache_beam.io.BigQuerySink')
@@ -286,7 +326,8 @@ class RunDeidLibTest(unittest.TestCase):
         'input_query', None, 'deid_tbl', 'findings_tbl',
         mae_dir, mae_table, deid_cfg_file, 'InspectPhiTask', 'fake-credentials',
         'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
-        batch_size=1, dtd_dir=None, pipeline_args=None)
+        batch_size=1, dtd_dir=None, input_csv=None, output_csv=None,
+        pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(
@@ -358,7 +399,8 @@ class RunDeidLibTest(unittest.TestCase):
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_file, 'InspectPhiTask',
         'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
-        None, 'dlp', batch_size=2, dtd_dir=None, pipeline_args=None)
+        None, 'dlp', batch_size=2, dtd_dir=None, input_csv=None,
+        output_csv=None, pipeline_args=None)
 
     expected_request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
@@ -451,7 +493,8 @@ class RunDeidLibTest(unittest.TestCase):
         'input_query', None, 'deid_tbl', 'findings_tbl',
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_file, 'InspectPhiTask',
         'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
-        None, 'dlp', batch_size=2, dtd_dir=None, pipeline_args=None)
+        None, 'dlp', batch_size=2, dtd_dir=None, input_csv=None,
+        output_csv=None, pipeline_args=None)
 
     expected_request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
@@ -525,7 +568,8 @@ class RunDeidLibTest(unittest.TestCase):
     run_deid_lib.run_pipeline(
         None, None, None, None, None, None, deid_cfg, 'InspectPhiTask',
         'fake-credentials', 'project', testutil.FakeStorageClient, None,
-        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, pipeline_args=None)
+        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, input_csv=None,
+        output_csv=None, pipeline_args=None)
 
     with open(
         os.path.join(TESTDATA_DIR, 'mae_testdata', 'sample.dtd')) as f:
@@ -538,7 +582,8 @@ class RunDeidLibTest(unittest.TestCase):
     run_deid_lib.run_pipeline(
         None, None, None, None, None, None, deid_cfg, 'InspectPhiTask',
         'fake-credentials', 'project', testutil.FakeStorageClient, None,
-        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, pipeline_args=None)
+        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, input_csv=None,
+        output_csv=None, pipeline_args=None)
 
     with open(
         os.path.join(TESTDATA_DIR, 'mae_testdata', 'sample.dtd')) as f:

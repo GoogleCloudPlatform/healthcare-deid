@@ -25,10 +25,12 @@ from __future__ import absolute_import
 
 import collections
 import copy
+import csv
 import json
 import logging
 import os
 import posixpath
+import StringIO
 import time
 import uuid
 
@@ -701,6 +703,11 @@ def _convert_new_row(row):
   return new_row
 
 
+def _one_exists(objs):
+  """Ensures only one object exists in the provided list."""
+  return 1 == len([obj for obj in objs if obj is not None])
+
+
 def _convert_old_row(row, field_indexes):
   new_row = {}
   for field_name, index in sorted(field_indexes.items(), key=lambda x: x[1]):
@@ -716,6 +723,33 @@ def _generate_schema(columns):
   for col in columns:
     segments.append('{0}:{1}'.format(col['name'], m[col['type']]))
   return ', '.join(segments)
+
+
+def read_csv(p, csv_filename):
+  """Read csv file to the row format expected by deid()."""
+  rows = []
+  with open(csv_filename) as f:
+    spamreader = csv.reader(f)
+    headers = []
+    for row in spamreader:
+      if not headers:
+        headers = row
+        continue
+      rowmap = {}
+      for i in range(len(headers)):
+        val = ''
+        if i < len(row):
+          val = row[i]
+        rowmap[headers[i]] = val
+      rows.append([rowmap])
+  return p | beam.Create(rows)
+
+
+def _to_line(rowmap, headers):
+  stringio = StringIO.StringIO()
+  writer = csv.DictWriter(stringio, headers)
+  writer.writerow(rowmap)
+  return stringio.getvalue()
 
 
 def _get_reads(p, input_table, input_query, bq_client, bq_config_fn,
@@ -786,10 +820,11 @@ def _get_reads(p, input_table, input_query, bq_client, bq_config_fn,
 def run_pipeline(input_query, input_table, deid_table, findings_table,
                  mae_dir, mae_table, deid_config_file, task_name, credentials,
                  project, storage_client_fn, bq_client, bq_config_fn,
-                 dlp_api_name, batch_size, dtd_dir, pipeline_args):
+                 dlp_api_name, batch_size, dtd_dir, input_csv, output_csv,
+                 pipeline_args):
   """Read the records from BigQuery, DeID them, and write them to BigQuery."""
-  if (input_query is None) == (input_table is None) and not dtd_dir:
-    return ['Exactly one of input_query and input_table must be set.']
+  if not _one_exists([input_query, input_table, input_csv]) and not dtd_dir:
+    return ['Exactly one of input method must be set.']
   config_text = ''
   if deid_config_file:
     with open(deid_config_file) as f:
@@ -801,7 +836,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
 
   if dtd_dir:
     _write_dtd(storage_client_fn, dtd_dir, mae_tag_categories, task_name)
-    if (input_query is None) == (input_table is None):
+    if not _one_exists([input_query, input_table, input_csv]):
       return []
 
   if len(target_columns) > 1 and (mae_dir or mae_table):
@@ -817,8 +852,13 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
             'un-transformed to allow for evals.'.format(col))
 
   p = beam.Pipeline(options=PipelineOptions(pipeline_args))
-  reads = _get_reads(p, input_table, input_query, bq_client, bq_config_fn,
-                     batch_size)
+  if _one_exists([input_table, input_query]):
+    reads = _get_reads(p, input_table, input_query, bq_client, bq_config_fn,
+                       batch_size)
+  if input_csv:
+    if not output_csv:
+      return ['Must provide --output_csv when --input_csv is set.']
+    reads = read_csv(p, input_csv)
 
   inspect_data = None
   if findings_table or mae_dir or mae_table:
@@ -856,22 +896,40 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
              mae_table, schema=('record_id:STRING,xml:STRING'),
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
 
-  if deid_table:
+  if deid_table or output_csv:
     if not deid_config_file:
-      return ['Must set --deid_config_file when --deid_table is set.']
-    # Call deidentify and write the result to BigQuery.
+      return ['Must set --deid_config_file when --deid_table or --output_csv '
+              'is set.']
     deid_columns = target_columns + field_transform_columns
+    deid_data = (reads
+                 | 'deid' >> beam.FlatMap(
+                     deid,
+                     credentials, project, deid_config, inspect_config,
+                     pass_through_columns, deid_columns, per_row_types,
+                     dlp_api_name)
+                 | 'get_deid_text' >> beam.Map(get_deid_text,
+                                               pass_through_columns,
+                                               deid_columns))
+
+  if deid_table:
     schema = _generate_schema(pass_through_columns + deid_columns)
-    _ = (reads
-         | 'deid' >> beam.FlatMap(
-             deid,
-             credentials, project, deid_config, inspect_config,
-             pass_through_columns, deid_columns, per_row_types, dlp_api_name)
-         | 'get_deid_text' >> beam.Map(get_deid_text, pass_through_columns,
-                                       deid_columns)
+    _ = (deid_data
          | 'write_deid_text' >> beam.io.Write(beam.io.BigQuerySink(
              deid_table, schema=schema,
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
+
+  if output_csv:
+    stringio = StringIO.StringIO()
+    headers = [c['name'] for c in pass_through_columns + target_columns]
+    writer = csv.DictWriter(stringio, headers)
+    writer.writeheader()
+    headerstr = stringio.getvalue()
+    _ = (deid_data
+         | 'to_lines' >> beam.Map(_to_line, headers)
+         | 'write_deid_text' >> beam.io.textio.WriteToText(
+             output_csv, num_shards=1, shard_name_template='',
+             header=headerstr, append_trailing_newlines=False))
+
   result = p.run().wait_until_finish()
 
   logging.info('DLP DeID result: %s', result)
@@ -920,3 +978,7 @@ def add_all_args(parser):
   parser.add_argument('--batch_size', type=int, required=False,
                       help='How many rows to send in each DLP API call.',
                       default=1)
+  parser.add_argument('--input_csv', type=str, required=False,
+                      help='Path to the input CSV file')
+  parser.add_argument('--output_csv', type=str, required=False,
+                      help='Path to the CSV file to write the output to')

@@ -25,4 +25,5 @@ exports_files([
     "multi_column_config.json",
     "multi_column_request.json",
     "request.json",
+    "input.csv",
 ])
