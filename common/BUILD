@@ -63,3 +63,8 @@ py_library(
         requirement("apache_beam"),
     ],
 )
+
+py_library(
+    name = "unicodecsv",
+    srcs = ["unicodecsv.py"],
+)

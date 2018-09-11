@@ -25,7 +25,6 @@ from __future__ import absolute_import
 
 import collections
 import copy
-import csv
 import json
 import logging
 import os
@@ -39,6 +38,7 @@ from apache_beam.options.pipeline_options import PipelineOptions
 from apiclient import discovery
 from apiclient import errors
 from common import mae
+from common import unicodecsv
 import httplib2
 
 
@@ -730,7 +730,7 @@ def read_csv(p, csv_filename):
   """Read csv file to the row format expected by deid()."""
   rows = []
   with open(csv_filename) as f:
-    spamreader = csv.reader(f)
+    spamreader = unicodecsv.UnicodeReader(f)
     headers = []
     for row in spamreader:
       if not headers:
@@ -748,7 +748,7 @@ def read_csv(p, csv_filename):
 
 def _to_line(rowmap, headers):
   stringio = StringIO.StringIO()
-  writer = csv.DictWriter(stringio, headers)
+  writer = unicodecsv.DictWriter(stringio, headers)
   writer.writerow(rowmap)
   return stringio.getvalue()
 
@@ -922,7 +922,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   if output_csv:
     stringio = StringIO.StringIO()
     headers = [c['name'] for c in pass_through_columns + target_columns]
-    writer = csv.DictWriter(stringio, headers)
+    writer = unicodecsv.DictWriter(stringio, headers)
     writer.writeheader()
     headerstr = stringio.getvalue()
     _ = (deid_data

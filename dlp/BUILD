@@ -27,6 +27,7 @@ py_library(
     srcs = ["run_deid_lib.py"],
     deps = [
         "//common:mae",
+        "//common:unicodecsv",
         requirement("apache_beam"),
         requirement("google-auth-httplib2"),
     ],
