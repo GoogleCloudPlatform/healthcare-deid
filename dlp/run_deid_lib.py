@@ -88,9 +88,10 @@ def request_with_retry(fn, num_retries=5):
             str(error) + '\nEnsure the service account specified in '
             'GOOGLE_APPLICATION_CREDENTIALS has the '
             'serviceusage.services.use permission.')
-      elif error.resp.status in [500, 503]:
+      elif error.resp.status in [500, 502, 503]:
         sleep_seconds = 10+2**attempt
         # 500, 503 - Service error. Wait and retry.
+        # 502 - Bad Gateway.  Wait and retry.
         logging.warn('attempt %d failed with 5xx error. retrying in %d sec...',
                      attempt + 1, sleep_seconds)
         time.sleep(sleep_seconds)
