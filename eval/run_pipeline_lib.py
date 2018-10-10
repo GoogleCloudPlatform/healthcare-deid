@@ -36,7 +36,7 @@ def _get_utcnow():
   return datetime.utcnow()
 
 
-def _get_findings_from_text(raw_text, types_to_ignore):
+def get_findings_from_text(raw_text, types_to_ignore):
   """Convert MAE xml to eval_lib.Finding objects."""
   tree = XmlTree.fromstring(raw_text)
   note_text = tree.find('TEXT').text
@@ -60,7 +60,7 @@ def _get_findings_from_file(filename, storage_client, types_to_ignore):
     raise Exception('Failed to get blob "{}" in bucket "{}".'.format(
         filename.blob, filename.bucket))
   contents = blob.download_as_string()
-  return _get_findings_from_text(contents, types_to_ignore)
+  return get_findings_from_text(contents, types_to_ignore)
 
 
 def compare_findings(findings, golden_findings, record_id, note_text,
@@ -100,13 +100,13 @@ def compare_bq_row(row, types_to_ignore):
   Raises:
     Exception: If golden_xml doesn't exist.
   """
-  findings, note_text = _get_findings_from_text(row['findings_xml'],
-                                                types_to_ignore)
+  findings, note_text = get_findings_from_text(row['findings_xml'],
+                                               types_to_ignore)
   if 'golden_xml' not in row or row['golden_xml'] is None:
     raise Exception(
         'No golden found for record %s.' % row['findings_record_id'])
-  golden_findings, golden_note_text = _get_findings_from_text(row['golden_xml'],
-                                                              types_to_ignore)
+  golden_findings, golden_note_text = get_findings_from_text(row['golden_xml'],
+                                                             types_to_ignore)
   record_id = row['findings_record_id']
 
   return compare_findings(findings, golden_findings, record_id, note_text,
@@ -140,30 +140,6 @@ def compare(filename, golden_dir, types_to_ignore):
 
   return compare_findings(findings, golden_findings, record_id, note_text,
                           golden_note_text)
-
-
-class _MacroStats(object):
-
-  def __init__(self):
-    self.count = 0
-    self.precision_sum = 0
-    self.recall_sum = 0
-    self.error_message = ''
-
-  def calculate_stats(self):
-    """Generate a resuts_pb2.Stats message with the macro-averaged results."""
-    stats = results_pb2.Stats()
-    if not self.count:
-      stats.precision = float('NaN')
-      stats.recall = float('NaN')
-      stats.f_score = float('NaN')
-      stats.error_message = 'Averaging over zero results.'
-      return stats
-    stats.precision = float(self.precision_sum) / self.count
-    stats.recall = float(self.recall_sum) / self.count
-    stats.f_score = eval_lib.hmean(stats.precision, stats.recall)
-    stats.error_message = self.error_message
-    return stats
 
 
 class OverallResults(object):

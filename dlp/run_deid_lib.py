@@ -178,27 +178,26 @@ def _create_item(target_columns, rows):
   return {'table': table}
 
 
-def _rebatch_deid(rows, credentials, project, deid_config, inspect_config,
+def _rebatch_deid(rows, project, deid_config, inspect_config,
                   pass_through_columns, target_columns, per_row_types,
                   dlp_api_name):
   """Call deid() twice with half the list each time and merge the result."""
   half_size = len(rows) / 2
-  ret_a = deid(rows[:half_size], credentials, project, deid_config,
+  ret_a = deid(rows[:half_size], project, deid_config,
                inspect_config, pass_through_columns, target_columns,
                per_row_types, dlp_api_name)
-  ret_b = deid(rows[half_size:], credentials, project, deid_config,
+  ret_b = deid(rows[half_size:], project, deid_config,
                inspect_config, pass_through_columns, target_columns,
                per_row_types, dlp_api_name)
   return ret_a + ret_b
 
 
-def deid(rows, credentials, project, deid_config, inspect_config,
-         pass_through_columns, target_columns, per_row_types, dlp_api_name):
+def deid(rows, project, deid_config, inspect_config, pass_through_columns,
+         target_columns, per_row_types, dlp_api_name):
   """Put the data through the DLP API DeID method.
 
   Args:
     rows: A list of BigQuery rows with data to send to the DLP API.
-    credentials: oauth2client.Credentials for authentication with the DLP API.
     project: The project to set as the parent in the request.
     deid_config: DeidentifyConfig map, as defined in the DLP API:
       https://goo.gl/WrvsDB#DeidentifyTemplate.DeidentifyConfig
@@ -219,8 +218,7 @@ def deid(rows, credentials, project, deid_config, inspect_config,
      - 'item': The 'item' element of the result from the DLP API call.
      - An entry for each pass-through column.
   """
-  dlp = discovery.build(dlp_api_name, 'v2', credentials=credentials,
-                        cache_discovery=False)
+  dlp = discovery.build(dlp_api_name, 'v2', cache_discovery=False)
   projects = dlp.projects()
   content = projects.content()
 
@@ -249,7 +247,7 @@ def deid(rows, credentials, project, deid_config, inspect_config,
       raise error
     logging.warning('Batch deid() request too large (%s rows). '
                     'Retrying as two smaller batches.', len(rows))
-    return _rebatch_deid(rows, credentials, project, deid_config,
+    return _rebatch_deid(rows, project, deid_config,
                          inspect_config, pass_through_columns, target_columns,
                          per_row_types, dlp_api_name)
   if 'error' in response:
@@ -278,15 +276,14 @@ def deid(rows, credentials, project, deid_config, inspect_config,
   return retvals
 
 
-def _rebatch_inspect(
-    rows, credentials, project, inspect_config, pass_through_columns,
-    target_columns, per_row_types, dlp_api_name):
+def _rebatch_inspect(rows, project, inspect_config, pass_through_columns,
+                     target_columns, per_row_types, dlp_api_name):
   """Call inspect() twice with half the list each time and merge the result."""
   half_size = len(rows) / 2
-  ret_a = inspect(rows[:half_size], credentials, project, inspect_config,
+  ret_a = inspect(rows[:half_size], project, inspect_config,
                   pass_through_columns, target_columns, per_row_types,
                   dlp_api_name)
-  ret_b = inspect(rows[half_size:], credentials, project, inspect_config,
+  ret_b = inspect(rows[half_size:], project, inspect_config,
                   pass_through_columns, target_columns, per_row_types,
                   dlp_api_name)
   # Merge ret_b into ret_a and adjust the row indexes up accordingly.
@@ -305,13 +302,12 @@ def _rebatch_inspect(
   return ret_a
 
 
-def inspect(rows, credentials, project, inspect_config, pass_through_columns,
+def inspect(rows, project, inspect_config, pass_through_columns,
             target_columns, per_row_types, dlp_api_name):
   """Put the data through the DLP API inspect method.
 
   Args:
     rows: A list of BigQuery rows with data to send to the DLP API.
-    credentials: oauth2client.Credentials for authentication with the DLP API.
     project: The project to set as the parent in the request.
     inspect_config: inspectConfig map, as defined in the DLP API:
       https://cloud.google.com/dlp/docs/reference/rest/v2/InspectConfig
@@ -331,8 +327,7 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
      - 'original_note': The original note, to be used in generating MAE output.
      - An entry for each pass-through column.
   """
-  dlp = discovery.build(dlp_api_name, 'v2', credentials=credentials,
-                        cache_discovery=False)
+  dlp = discovery.build(dlp_api_name, 'v2', cache_discovery=False)
   projects = dlp.projects()
   content = projects.content()
 
@@ -354,7 +349,7 @@ def inspect(rows, credentials, project, inspect_config, pass_through_columns,
     logging.warning('Batch inspect() request too large (%s rows). '
                     'Retrying as two smaller batches.', len(rows))
     return _rebatch_inspect(
-        rows, credentials, project, inspect_config, pass_through_columns,
+        rows, project, inspect_config, pass_through_columns,
         target_columns, per_row_types, dlp_api_name)
 
   if 'error' in response:
@@ -533,17 +528,25 @@ def _generate_deid_config(info_type_transformations, target_columns,
           {'fieldTransformations': field_transformations}}
 
 
-def generate_configs(config_text, input_query=None, input_table=None,
-                     bq_client=None, bq_config_fn=None):
-  """Generate DLP API configs based on the input config file."""
-  mae_tag_categories = {}
-  per_row_types = []
-  key_columns = []
+def parse_config_file(deid_config_file):
+  """Creates a json object out of a provided deid config file."""
+  with open(deid_config_file) as f:
+    config_text = f.read()
   try:
     cfg = json.loads(config_text, object_pairs_hook=collections.OrderedDict)
   except (TypeError, ValueError):
     logging.error('JSON parsing of DeID config file failed.')
     raise Exception('Invalid JSON DeID Config.')
+
+  return cfg
+
+
+def generate_configs(cfg, input_query=None, input_table=None,
+                     bq_client=None, bq_config_fn=None):
+  """Generate DLP API configs based on the input config file."""
+  mae_tag_categories = {}
+  per_row_types = []
+  key_columns = []
   if 'tagCategories' in cfg:
     mae_tag_categories = cfg['tagCategories']
   if 'keyColumns' in cfg:
@@ -819,20 +822,18 @@ def _get_reads(p, input_table, input_query, bq_client, bq_config_fn,
 
 
 def run_pipeline(input_query, input_table, deid_table, findings_table,
-                 mae_dir, mae_table, deid_config_file, task_name, credentials,
+                 mae_dir, mae_table, deid_config_json, task_name,
                  project, storage_client_fn, bq_client, bq_config_fn,
                  dlp_api_name, batch_size, dtd_dir, input_csv, output_csv,
                  pipeline_args):
   """Read the records from BigQuery, DeID them, and write them to BigQuery."""
   if not _one_exists([input_query, input_table, input_csv]) and not dtd_dir:
     return ['Exactly one of input method must be set.']
-  config_text = ''
-  if deid_config_file:
-    with open(deid_config_file) as f:
-      config_text = f.read()
+  if not deid_config_json:
+    return ['Must provide DeID Config.']
   (inspect_config, deid_config, mae_tag_categories, key_columns, per_row_types,
    pass_through_columns, target_columns, field_transform_columns) = (
-       generate_configs(config_text, input_query, input_table, bq_client,
+       generate_configs(deid_config_json, input_query, input_table, bq_client,
                         bq_config_fn))
 
   if dtd_dir:
@@ -864,7 +865,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
   inspect_data = None
   if findings_table or mae_dir or mae_table:
     inspect_data = (reads | 'inspect' >> beam.FlatMap(
-        inspect, credentials, project, inspect_config,
+        inspect, project, inspect_config,
         pass_through_columns, target_columns, per_row_types, dlp_api_name))
   if findings_table:
     # Write the inspect result to BigQuery. We don't process the result, even
@@ -898,14 +899,14 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
 
   if deid_table or output_csv:
-    if not deid_config_file:
+    if not deid_config_json:
       return ['Must set --deid_config_file when --deid_table or --output_csv '
               'is set.']
     deid_columns = target_columns + field_transform_columns
     deid_data = (reads
                  | 'deid' >> beam.FlatMap(
                      deid,
-                     credentials, project, deid_config, inspect_config,
+                     project, deid_config, inspect_config,
                      pass_through_columns, deid_columns, per_row_types,
                      dlp_api_name)
                  | 'get_deid_text' >> beam.Map(get_deid_text,

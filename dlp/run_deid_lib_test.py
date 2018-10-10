@@ -147,7 +147,7 @@ class RunDeidLibTest(unittest.TestCase):
     self.assertRaisesRegexp(
         Exception, r'Deidentify\(\) failed: MyField: "some details"',
         run_deid_lib.deid,
-        [], 'fake-creds', 'project', {}, {}, [], [], [], 'api')
+        [], 'project', {}, {}, [], [], [], 'api')
 
   @patch('apiclient.discovery.build')
   @patch('apache_beam.io.BigQuerySink')
@@ -198,13 +198,14 @@ class RunDeidLibTest(unittest.TestCase):
     bq_client.run_async_query.return_value = query_job
 
     deid_cfg = os.path.join(TESTDATA_DIR, 'testdata/config.json')
+    deid_cfg_json = run_deid_lib.parse_config_file(deid_cfg)
     dtd_dir = tempfile.mkdtemp()
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
-        'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg, 'InspectPhiTask',
-        'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
-        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, input_csv=None,
-        output_csv=None, pipeline_args=None)
+        'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_json, 'InspectPhiTask',
+        'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
+        batch_size=1, dtd_dir=dtd_dir, input_csv=None, output_csv=None,
+        pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/request.json')) as f:
@@ -255,13 +256,14 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     deid_cfg = os.path.join(TESTDATA_DIR, 'sample_deid_config.json')
+    deid_cfg_json = run_deid_lib.parse_config_file(deid_cfg)
     input_csv = os.path.join(TESTDATA_DIR, 'testdata/input.csv')
     run_deid_lib.run_pipeline(
         None, None, None, None,
-        None, None, deid_cfg, 'InspectPhiTask',
-        'fake-credentials', 'project', testutil.FakeStorageClient, None,
-        None, 'dlp', batch_size=1, dtd_dir=None, input_csv=input_csv,
-        output_csv='output-csv', pipeline_args=None)
+        None, None, deid_cfg_json, 'InspectPhiTask', 'project',
+        testutil.FakeStorageClient, None, None, 'dlp', batch_size=1,
+        dtd_dir=None, input_csv=input_csv, output_csv='output-csv',
+        pipeline_args=None)
 
     fake_content.deidentify.assert_called_once()
     self.assertEqual(
@@ -319,12 +321,13 @@ class RunDeidLibTest(unittest.TestCase):
 
     deid_cfg_file = os.path.join(TESTDATA_DIR,
                                  'testdata/multi_column_config.json')
+    deid_cfg_json = run_deid_lib.parse_config_file(deid_cfg_file)
 
     mae_dir = ''  # Not compatible with multi-column.
     mae_table = ''  # Not compatible with multi-column.
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
-        mae_dir, mae_table, deid_cfg_file, 'InspectPhiTask', 'fake-credentials',
+        mae_dir, mae_table, deid_cfg_json, 'InspectPhiTask',
         'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
         batch_size=1, dtd_dir=None, input_csv=None, output_csv=None,
         pipeline_args=None)
@@ -394,13 +397,14 @@ class RunDeidLibTest(unittest.TestCase):
     bq_client.run_async_query.return_value = query_job
 
     deid_cfg_file = os.path.join(TESTDATA_DIR, 'testdata/batch_config.json')
+    deid_cfg_json = run_deid_lib.parse_config_file(deid_cfg_file)
 
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
-        'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_file, 'InspectPhiTask',
-        'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
-        None, 'dlp', batch_size=2, dtd_dir=None, input_csv=None,
-        output_csv=None, pipeline_args=None)
+        'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_json, 'InspectPhiTask',
+        'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
+        batch_size=2, dtd_dir=None, input_csv=None, output_csv=None,
+        pipeline_args=None)
 
     expected_request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
@@ -488,13 +492,14 @@ class RunDeidLibTest(unittest.TestCase):
     bq_client.run_async_query.return_value = query_job
 
     deid_cfg_file = os.path.join(TESTDATA_DIR, 'testdata/batch_config.json')
+    deid_cfg_json = run_deid_lib.parse_config_file(deid_cfg_file)
 
     run_deid_lib.run_pipeline(
         'input_query', None, 'deid_tbl', 'findings_tbl',
-        'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_file, 'InspectPhiTask',
-        'fake-credentials', 'project', testutil.FakeStorageClient, bq_client,
-        None, 'dlp', batch_size=2, dtd_dir=None, input_csv=None,
-        output_csv=None, pipeline_args=None)
+        'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_json, 'InspectPhiTask',
+        'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
+        batch_size=2, dtd_dir=None, input_csv=None, output_csv=None,
+        pipeline_args=None)
 
     expected_request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
@@ -564,12 +569,13 @@ class RunDeidLibTest(unittest.TestCase):
 
   def testGenerateDtdLocal(self):
     deid_cfg = os.path.join(TESTDATA_DIR, 'testdata/config.json')
+    deid_cfg_json = run_deid_lib.parse_config_file(deid_cfg)
     dtd_dir = tempfile.mkdtemp()
     run_deid_lib.run_pipeline(
-        None, None, None, None, None, None, deid_cfg, 'InspectPhiTask',
-        'fake-credentials', 'project', testutil.FakeStorageClient, None,
-        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, input_csv=None,
-        output_csv=None, pipeline_args=None)
+        None, None, None, None, None, None, deid_cfg_json, 'InspectPhiTask',
+        'project', testutil.FakeStorageClient, None, None, 'dlp',
+        batch_size=1, dtd_dir=dtd_dir, input_csv=None, output_csv=None,
+        pipeline_args=None)
 
     with open(
         os.path.join(TESTDATA_DIR, 'mae_testdata', 'sample.dtd')) as f:
@@ -578,12 +584,13 @@ class RunDeidLibTest(unittest.TestCase):
 
   def testGenerateDtdGcs(self):
     deid_cfg = os.path.join(TESTDATA_DIR, 'testdata/config.json')
+    deid_cfg_json = run_deid_lib.parse_config_file(deid_cfg)
     dtd_dir = 'gs://dtd-dir'
     run_deid_lib.run_pipeline(
-        None, None, None, None, None, None, deid_cfg, 'InspectPhiTask',
-        'fake-credentials', 'project', testutil.FakeStorageClient, None,
-        None, 'dlp', batch_size=1, dtd_dir=dtd_dir, input_csv=None,
-        output_csv=None, pipeline_args=None)
+        None, None, None, None, None, None, deid_cfg_json, 'InspectPhiTask',
+        'project', testutil.FakeStorageClient, None, None, 'dlp',
+        batch_size=1, dtd_dir=dtd_dir, input_csv=None, output_csv=None,
+        pipeline_args=None)
 
     with open(
         os.path.join(TESTDATA_DIR, 'mae_testdata', 'sample.dtd')) as f:

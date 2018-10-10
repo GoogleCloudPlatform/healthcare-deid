@@ -23,7 +23,6 @@
         {"name": "CANADA_SOCIAL_INSURANCE_NUMBER"},
         {"name": "CHINA_PASSPORT"},
         {"name": "CREDIT_CARD_NUMBER"},
-        {"name": "DATE"},
         {"name": "EMAIL_ADDRESS"},
         {"name": "FRANCE_CNI"},
         {"name": "FRANCE_NIR"},
@@ -62,6 +61,23 @@
       ],
       "primitiveTransformation": {
         "replaceWithInfoTypeConfig": {}
+      }
+    },
+    {
+      "infoTypes": [
+        {"name": "DATE"}
+      ],
+      "primitiveTransformation": {
+        "dateShiftConfig": {
+          "context": {
+            "name": "patient_id"
+          },
+          "upperBoundDays": 100,
+          "lowerBoundDays": -100,
+          "cryptoKey": {
+            "unwrapped": { "key": "123456789012345678901234567890ab" }
+          }
+        }
       }
     }
   ],

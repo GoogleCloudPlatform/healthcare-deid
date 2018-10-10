@@ -92,6 +92,8 @@ py_binary(
 py_test(
     name = "run_deid_lib_test",
     srcs = ["run_deid_lib_test.py"],
+    # Flaky after cl/212996664
+    flaky = 1,
     deps = [":run_deid"],
 )
 

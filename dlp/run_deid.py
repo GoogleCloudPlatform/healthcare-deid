@@ -46,7 +46,7 @@ def main():
   if var not in os.environ or not os.environ[var]:
     raise Exception('You must specify service account credentials in the '
                     'GOOGLE_APPLICATION_CREDENTIALS environment variable.')
-  credentials, default_project = google.auth.default()
+  _, default_project = google.auth.default()
 
   # Parse --project and re-add it to the pipeline args, swapping it out for the
   # default if it's not set.
@@ -60,12 +60,16 @@ def main():
   if hasattr(bigquery.job, 'QueryJobConfig'):
     bq_config_fn = bigquery.job.QueryJobConfig
 
+  if not args.deid_config_file:
+    raise Exception('Must provide DeID Config.')
+  deid_config_json = run_deid_lib.parse_config_file(args.deid_config_file)
+
   errors = run_deid_lib.run_pipeline(
       args.input_query, args.input_table, args.deid_table, args.findings_table,
-      args.mae_dir, args.mae_table, args.deid_config_file, args.mae_task_name,
-      credentials, default_project, storage.Client, bq_client, bq_config_fn,
-      args.dlp_api_name, args.batch_size, args.dtd_dir, args.input_csv,
-      args.output_csv, pipeline_args)
+      args.mae_dir, args.mae_table, deid_config_json, args.mae_task_name,
+      project, storage.Client, bq_client, bq_config_fn, args.dlp_api_name,
+      args.batch_size, args.dtd_dir, args.input_csv, args.output_csv,
+      pipeline_args)
 
   if errors:
     logging.error(errors)

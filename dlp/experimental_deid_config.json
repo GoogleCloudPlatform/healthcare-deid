@@ -18,7 +18,6 @@
         {"name": "DATE"},
         {"name": "TIME"},
         {"name": "AGE"},
-        {"name": "MEDICARE_NUMBER"},
         {"name": "UNKNOWN_IDENTIFIER"},
         {"name": "EMAIL_ADDRESS"}
       ],
@@ -48,10 +47,6 @@
     {
       "name": "DATE",
       "infoTypes": ["DATE", "TIME"]
-    },
-    {
-      "name": "MEDICALRECORD",
-      "infoTypes": ["MEDICARE_NUMBER"]
     },
     {
       "name": "STREET",

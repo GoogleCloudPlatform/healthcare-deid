@@ -21,6 +21,13 @@ import re
 
 MaeTuple = collections.namedtuple('MaeTuple', ['record_id', 'mae_xml'])
 
+FILE_START = u"""<?xml version="1.0" encoding="UTF-8" ?>
+<{0}>
+<TEXT><![CDATA[{1}]]></TEXT>
+<TAGS>"""
+TAG = '\n<{0} id="{0}{1}" spans="{2}~{3}" />'
+FILE_END = '\n</TAGS></{0}>\n'
+
 
 # Remove control characters which aren't valid in XML 1.0, since XmlTree can't
 # handle them. https://www.w3.org/TR/xml/#charsets
@@ -91,12 +98,7 @@ def generate_mae(inspect_result, task_name, mae_tag_categories, key_columns):
   safe_note = remove_invalid_characters(raw_note)
 
   infotype_to_tag_map = _get_infotype_to_tag_map(mae_tag_categories)
-  mae_xml = [
-      u"""<?xml version="1.0" encoding="UTF-8" ?>
-<{0}>
-<TEXT><![CDATA[{1}]]></TEXT>
-<TAGS>""".format(task_name, safe_note)
-  ]
+  mae_xml = [FILE_START.format(task_name, safe_note)]
   counts = collections.defaultdict(int)
   findings = []
   if 'findings' in inspect_result['result']:
@@ -105,11 +107,11 @@ def generate_mae(inspect_result, task_name, mae_tag_categories, key_columns):
     tag_name = infotype_to_tag_map[finding['infoType']['name']]
     count = counts[tag_name]
     counts[tag_name] += 1
-    mae_xml.append('\n<{0} id="{0}{1}" spans="{2}~{3}" />'.format(
+    mae_xml.append(TAG.format(
         tag_name, count, _start(finding, invalid_chars_indexes),
         _end(finding, invalid_chars_indexes)))
 
-  mae_xml.append('\n</TAGS></{0}>\n'.format(task_name))
+  mae_xml.append(FILE_END.format(task_name))
 
   record_id_values = []
   for col in key_columns:
