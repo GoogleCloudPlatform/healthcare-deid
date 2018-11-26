@@ -1,0 +1,26 @@
+<div class="top-bar-container">
+  <form>
+    <label for="imageInput" class="top-bar-item">Choose Image</label>
+    <input type="file" #imgInput
+           class="top-bar-item"
+           (change)="redactImage(imgInput.files)"
+           name="imageInput"
+           accept="image/jpeg, image/png, image/bmp, image/svg">
+  </form>
+</div>
+
+<div id="dlp-demo-image-row">
+  <div class="dlp-img-column">
+    <h3>Original Image</h3>
+    <div class="dlp-demo-img">
+      <img *ngIf="base64OrigImg" [src]="base64OrigImg">
+    </div>
+  </div>
+  <div class="dlp-img-column">
+    <h3>Redacted Image</h3>
+    <div class="dlp-demo-img">
+      <img *ngIf="base64RedactedImg" [src]="base64RedactedImg">
+    </div>
+  </div>
+</div>
+

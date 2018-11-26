@@ -1,0 +1,194 @@
+{
+  "columns": {
+    "passThrough": [
+      {"name": "patient_id", "type": "stringValue"},
+      {"name": "record_number", "type": "integerValue"}
+    ],
+    "inspect": [
+      {"name": "note", "type": "stringValue"}
+    ]
+  },
+  "infoTypeTransformations": [
+    {
+      "infoTypes": [
+        {"name": "AGE"},
+        {"name": "AMERICAN_BANKERS_CUSIP_ID"},
+        {"name": "AUSTRALIA_MEDICARE_NUMBER"},
+        {"name": "AUSTRALIA_TAX_FILE_NUMBER"},
+        {"name": "BRAZIL_CPF_NUMBER"},
+        {"name": "CANADA_BC_PHN"},
+        {"name": "CANADA_OHIP"},
+        {"name": "CANADA_PASSPORT"},
+        {"name": "CANADA_QUEBEC_HIN"},
+        {"name": "CANADA_SOCIAL_INSURANCE_NUMBER"},
+        {"name": "CHINA_PASSPORT"},
+        {"name": "CREDIT_CARD_NUMBER"},
+        {"name": "DATE"},
+        {"name": "EMAIL_ADDRESS"},
+        {"name": "FRANCE_CNI"},
+        {"name": "FRANCE_NIR"},
+        {"name": "FRANCE_PASSPORT"},
+        {"name": "GERMANY_PASSPORT"},
+        {"name": "IBAN_CODE"},
+        {"name": "INDIA_PAN_INDIVIDUAL"},
+        {"name": "IP_ADDRESS"},
+        {"name": "JAPAN_INDIVIDUAL_NUMBER"},
+        {"name": "JAPAN_PASSPORT"},
+        {"name": "KOREA_PASSPORT"},
+        {"name": "KOREA_RRN"},
+        {"name": "LOCATION"},
+        {"name": "MAC_ADDRESS"},
+        {"name": "MAC_ADDRESS_LOCAL"},
+        {"name": "MEXICO_CURP_NUMBER"},
+        {"name": "MEXICO_PASSPORT"},
+        {"name": "NETHERLANDS_BSN_NUMBER"},
+        {"name": "PERSON_NAME"},
+        {"name": "PHONE_NUMBER"},
+        {"name": "SPAIN_NIE_NUMBER"},
+        {"name": "SPAIN_NIF_NUMBER"},
+        {"name": "SPAIN_PASSPORT"},
+        {"name": "SWIFT_CODE"},
+        {"name": "UK_DRIVERS_LICENSE_NUMBER"},
+        {"name": "UK_NATIONAL_HEALTH_SERVICE_NUMBER"},
+        {"name": "UK_NATIONAL_INSURANCE_NUMBER"},
+        {"name": "UK_PASSPORT"},
+        {"name": "UK_TAXPAYER_REFERENCE"},
+        {"name": "US_DRIVERS_LICENSE_NUMBER"},
+        {"name": "US_EMPLOYER_IDENTIFICATION_NUMBER"},
+        {"name": "US_HEALTHCARE_NPI"},
+        {"name": "US_PASSPORT"},
+        {"name": "US_SOCIAL_SECURITY_NUMBER"},
+        {"name": "US_VEHICLE_IDENTIFICATION_NUMBER"}
+      ],
+      "primitiveTransformation": {
+        "replaceWithInfoTypeConfig": {}
+      }
+    }
+  ],
+  "keyColumns": ["patient_id", "record_number"],
+  "tagCategories": [
+    {
+      "name": "NAME",
+      "infoTypes": ["PERSON_NAME"]
+    },
+    {
+      "name": "AGE",
+      "infoTypes": ["AGE"]
+    },
+    {
+      "name": "ORGANIZATION",
+      "infoTypes": []
+    },
+    {
+      "name": "ID",
+      "infoTypes": [
+        "AMERICAN_BANKERS_CUSIP_ID",
+        "AUSTRALIA_MEDICARE_NUMBER",
+        "AUSTRALIA_TAX_FILE_NUMBER",
+        "BRAZIL_CPF_NUMBER",
+        "CANADA_BC_PHN",
+        "CANADA_OHIP",
+        "CANADA_PASSPORT",
+        "CANADA_QUEBEC_HIN",
+        "CANADA_SOCIAL_INSURANCE_NUMBER",
+        "CHINA_PASSPORT",
+        "CREDIT_CARD_NUMBER",
+        "FRANCE_CNI",
+        "FRANCE_NIR",
+        "FRANCE_PASSPORT",
+        "GERMANY_PASSPORT",
+        "IBAN_CODE",
+        "INDIA_PAN_INDIVIDUAL",
+        "IP_ADDRESS",
+        "JAPAN_INDIVIDUAL_NUMBER",
+        "JAPAN_PASSPORT",
+        "KOREA_PASSPORT",
+        "KOREA_RRN",
+        "MAC_ADDRESS",
+        "MAC_ADDRESS_LOCAL",
+        "MEXICO_CURP_NUMBER",
+        "MEXICO_PASSPORT",
+        "NETHERLANDS_BSN_NUMBER",
+        "SPAIN_NIE_NUMBER",
+        "SPAIN_NIF_NUMBER",
+        "SPAIN_PASSPORT",
+        "SWIFT_CODE",
+        "UK_DRIVERS_LICENSE_NUMBER",
+        "UK_NATIONAL_HEALTH_SERVICE_NUMBER",
+        "UK_NATIONAL_INSURANCE_NUMBER",
+        "UK_PASSPORT",
+        "UK_TAXPAYER_REFERENCE",
+        "US_DRIVERS_LICENSE_NUMBER",
+        "US_EMPLOYER_IDENTIFICATION_NUMBER",
+        "US_HEALTHCARE_NPI",
+        "US_PASSPORT",
+        "US_SOCIAL_SECURITY_NUMBER",
+        "US_VEHICLE_IDENTIFICATION_NUMBER"
+      ]
+    },
+    {
+      "name": "DATE",
+      "infoTypes": ["DATE"]
+    },
+    {
+      "name": "MEDICALRECORD",
+      "infoTypes": []
+    },
+    {
+      "name": "STREET",
+      "infoTypes": []
+    },
+    {
+      "name": "CITY",
+      "infoTypes": []
+    },
+    {
+      "name": "ZIPCODE",
+      "infoTypes": []
+    },
+    {
+      "name": "STATE",
+      "infoTypes": []
+    },
+    {
+      "name": "COUNTRY",
+      "infoTypes": []
+    },
+    {
+      "name": "LOCATION",
+      "infoTypes": ["LOCATION"]
+    },
+    {
+      "name": "HOSPITAL",
+      "infoTypes": []
+    },
+    {
+      "name": "PHONE",
+      "infoTypes": ["PHONE_NUMBER"]
+    },
+    {
+      "name": "EMAIL",
+      "infoTypes": ["EMAIL_ADDRESS"]
+    },
+    {
+      "name": "URL",
+      "infoTypes": []
+    },
+    {
+      "name": "PROFESSION",
+      "infoTypes": []
+    },
+    {
+      "name": "FIRST_NAME",
+      "infoTypes": []
+    },
+    {
+      "name": "LAST_NAME",
+      "infoTypes": []
+    },
+    {
+      "name": "UNKNOWN_CLASSIFICATION_TYPE",
+      "infoTypes": []
+    }
+  ]
+}

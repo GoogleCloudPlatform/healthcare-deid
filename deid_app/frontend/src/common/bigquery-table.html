@@ -1,0 +1,21 @@
+<div [formGroup]="bqTableForm">
+  <mat-form-field>
+    <mat-select placeholder="BigQuery dataset"
+                formControlName="dataset">
+      <mat-option *ngFor="let dataset of dlpDemoService.datasets | async"
+                [value]="dataset">
+        {{dataset}}
+      </mat-option>
+    </mat-select>
+  </mat-form-field>
+
+  <mat-form-field *ngIf="bqTables">
+    <mat-select placeholder="BigQuery table"
+                formControlName="table">
+      <mat-option *ngFor="let table of bqTables | async"
+                [value]="table">
+        {{table}}
+      </mat-option>
+    </mat-select>
+  </mat-form-field>
+</div>

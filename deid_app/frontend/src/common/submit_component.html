@@ -1,0 +1,16 @@
+<div *ngIf="!waiting" class="pipeline-submit">
+  <button mat-raised-button
+          type="submit"
+          color="primary"
+          class="pipeline-submit"
+          [disabled]="!submitForm.valid">
+    {{submitPlaceholder}}
+  </button>
+</div>
+<div *ngIf="waiting" class="pipeline-submit">
+  <mat-progress-spinner class="pipeline-spinner"
+                        color="primary"
+                        diameter="50"
+                        mode="indeterminate">
+  </mat-progress-spinner>
+</div>

@@ -1,0 +1,57 @@
+<div class="dlp-container">
+  <h2 class="title">Compare Jobs</h2>
+  <form [formGroup]="compareForm">
+    <mat-form-field>
+      <input matInput
+             placeholder="Enter Job Name"
+             formControlName="job"
+             [matAutocomplete]="auto">
+      <mat-autocomplete #auto="matAutocomplete"
+                        [displayWith]="displayJob">
+        <mat-option *ngFor="let job of jobsFilter | async"
+             [value]="job">
+          ID: {{job.id}} - Name: {{job.name}}
+        </mat-option>
+      </mat-autocomplete>
+    </mat-form-field>
+
+    <mat-form-field *ngIf="records">
+      <mat-select placeholder="Select the record to compare"
+                  formControlName="record">
+        <mat-option *ngFor="let record of records | async"
+                    [value]="record">
+          Patient ID: {{record.patientId}} - Record Number:
+          {{record.recordNumber}}
+        </mat-option>
+      </mat-select>
+    </mat-form-field>
+  </form>
+</div>
+
+<div *ngIf="noteToCompare && (noteToCompare | async) as note"
+     id="compare-text-row">
+  <div class="compare-text-col">
+    <h3>Original Text</h3>
+    <div class="data">
+      <code>
+        <ng-container *ngFor="let entry of note">
+          <span [textContent]="getOrigText(entry)"
+         [style.background-color]="getBackgroundColor(entry)"
+         [style.font-size]="FONTSIZE"></span>
+        </ng-container>
+      </code>
+    </div>
+  </div>
+  <div class="compare-text-col">
+    <h3>Deidentified Text</h3>
+    <div class="data">
+      <code>
+        <ng-container *ngFor="let entry of note">
+          <span [textContent]="getDeidText(entry)"
+         [style.background-color]="getBackgroundColor(entry)"
+         [style.font-size]="FONTSIZE"></span>
+        </ng-container>
+      </code>
+    </div>
+  </div>
+</div>

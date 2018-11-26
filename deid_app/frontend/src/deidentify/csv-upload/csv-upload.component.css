@@ -1,0 +1,9 @@
+mat-form-field {
+  width: 100%;
+}
+
+.upload-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

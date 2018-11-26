@@ -1,5 +1,5 @@
 {
-  "experimentalConfig": "enabled",
+  "experimentalConfig": "default",
   "columns": {
     "passThrough": [
       {"name": "patient_id", "type": "stringValue"},

@@ -1,0 +1,27 @@
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.dlp-container {
+  margin: 20px auto;
+  padding: 0 15px;
+  background-color: white;
+}
+@media (min-width: 768px) {
+  .dlp-container {
+    width: 750px;
+  }
+}
+@media (min-width: 992px) {
+  .dlp-container {
+    width: 970px;
+  }
+
+}
+@media (min-width: 1200px) {
+  .dlp-container {
+    width: 1170px;
+  }
+}

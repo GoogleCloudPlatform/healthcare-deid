@@ -1,0 +1,28 @@
+<mat-sidenav-container fullscreen >
+  <mat-sidenav #sidenav mode="push">
+    <mat-button-toggle-group vertical value="dlpdemo">
+      <mat-button-toggle routerLink="/dlpdemo" value="Dlp Demo">
+        Dlp Demo
+      </mat-button-toggle>
+      <mat-button-toggle routerLink="deidentify" value="deidentify">
+        Deidentify
+      </mat-button-toggle>
+      <mat-button-toggle routerLink="evaluate" value="evaluate">
+        Evaluate
+      </mat-button-toggle>
+    </mat-button-toggle-group>
+  </mat-sidenav>
+
+  <mat-sidenav-content>
+    <mat-toolbar color="primary" [class.mat-elevation-z5]="true">
+      <button mat-button (click)="sidenav.toggle()">
+        <mat-icon>menu</mat-icon>
+      </button>
+      <div class="title">
+        {{title}}
+      </div>
+    </mat-toolbar>
+    <router-outlet></router-outlet>
+  </mat-sidenav-content>
+</mat-sidenav-container>
+

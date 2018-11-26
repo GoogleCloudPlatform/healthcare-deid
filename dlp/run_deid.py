@@ -24,6 +24,7 @@ pip install --upgrade google-api-python-client
 from __future__ import absolute_import
 
 import argparse
+from datetime import datetime
 import logging
 import os
 import sys
@@ -63,12 +64,13 @@ def main():
   if not args.deid_config_file:
     raise Exception('Must provide DeID Config.')
   deid_config_json = run_deid_lib.parse_config_file(args.deid_config_file)
+  timestamp = datetime.utcnow()
 
   errors = run_deid_lib.run_pipeline(
       args.input_query, args.input_table, args.deid_table, args.findings_table,
       args.mae_dir, args.mae_table, deid_config_json, args.mae_task_name,
       project, storage.Client, bq_client, bq_config_fn, args.dlp_api_name,
-      args.batch_size, args.dtd_dir, args.input_csv, args.output_csv,
+      args.batch_size, args.dtd_dir, args.input_csv, args.output_csv, timestamp,
       pipeline_args)
 
   if errors:

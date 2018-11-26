@@ -43,7 +43,7 @@ def main():
       args.mae_input_query, args.mae_golden_table,
       args.write_per_note_stats_to_gcs, args.results_table,
       args.per_note_results_table, args.debug_output_table,
-      args.types_to_ignore or [], pipeline_args)
+      args.types_to_ignore or [], None, pipeline_args)
 
   if errors:
     logging.error(errors)

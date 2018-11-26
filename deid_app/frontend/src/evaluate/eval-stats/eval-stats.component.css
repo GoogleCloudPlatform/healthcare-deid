@@ -1,0 +1,7 @@
+table, mat-form-field {
+  width: 100%;
+}
+
+mat-cell, .mat-cell {
+  padding: 12px 16px 12px 0;
+}

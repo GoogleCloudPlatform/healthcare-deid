@@ -25,6 +25,7 @@ from __future__ import absolute_import
 
 import collections
 import copy
+from datetime import datetime
 import json
 import logging
 import os
@@ -43,6 +44,8 @@ import httplib2
 
 
 CUSTOM_INFO_TYPES = 'customInfoTypes'
+DLP_FINDINGS_TIMESTAMP = 'dlp_findings_timestamp'
+DLP_DEID_TIMESTAMP = 'dlp_deid_timestamp'
 
 
 def _get_index(column_name, headers):
@@ -105,7 +108,8 @@ def request_with_retry(fn, num_retries=5):
       raise
 
 
-def get_deid_text(deid_response, pass_through_columns, target_columns):
+def get_deid_text(deid_response, pass_through_columns, target_columns,
+                  timestamp):
   """Get the de-id'd text from the deidentify() API call response."""
   # Sample response for a request with a table as input:
   # {'item': {'table': {
@@ -126,6 +130,7 @@ def get_deid_text(deid_response, pass_through_columns, target_columns):
       val = table['rows'][0]['values'][i][col['type']]
     response[col['name']] = val
 
+  response[DLP_DEID_TIMESTAMP] = timestamp
   return response
 
 
@@ -384,10 +389,11 @@ def inspect(rows, project, inspect_config, pass_through_columns,
   return retvals
 
 
-def format_findings(inspect_result, pass_through_columns):
-  ret = {'findings': str(inspect_result['result'])}
+def format_findings(inspect_result, pass_through_columns, timestamp):
+  ret = {'findings': json.dumps(inspect_result['result'])}
   for col in pass_through_columns:
     ret[col['name']] = inspect_result[col['name']]
+  ret[DLP_FINDINGS_TIMESTAMP] = timestamp
   return ret
 
 
@@ -722,7 +728,8 @@ def _convert_old_row(row, field_indexes):
 def _generate_schema(columns):
   """Generate a BigQuery schema with the configured columns."""
   m = {'stringValue': 'STRING', 'integerValue': 'INTEGER',
-       'floatValue': 'FLOAT', 'booleanValue': 'BOOLEAN'}
+       'floatValue': 'FLOAT', 'booleanValue': 'BOOLEAN',
+       'timestamp': 'TIMESTAMP'}
   segments = []
   for col in columns:
     segments.append('{0}:{1}'.format(col['name'], m[col['type']]))
@@ -825,7 +832,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
                  mae_dir, mae_table, deid_config_json, task_name,
                  project, storage_client_fn, bq_client, bq_config_fn,
                  dlp_api_name, batch_size, dtd_dir, input_csv, output_csv,
-                 pipeline_args):
+                 timestamp, pipeline_args):
   """Read the records from BigQuery, DeID them, and write them to BigQuery."""
   if not _one_exists([input_query, input_table, input_csv]) and not dtd_dir:
     return ['Exactly one of input method must be set.']
@@ -862,18 +869,24 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
       return ['Must provide --output_csv when --input_csv is set.']
     reads = read_csv(p, input_csv)
 
+  if not timestamp:
+    timestamp = str(datetime.utcnow())
+
   inspect_data = None
   if findings_table or mae_dir or mae_table:
     inspect_data = (reads | 'inspect' >> beam.FlatMap(
-        inspect, project, inspect_config,
-        pass_through_columns, target_columns, per_row_types, dlp_api_name))
+        inspect, project, inspect_config, pass_through_columns, target_columns,
+        per_row_types, dlp_api_name))
   if findings_table:
     # Write the inspect result to BigQuery. We don't process the result, even
     # if it's for multiple columns.
     schema = _generate_schema(pass_through_columns +
-                              [{'name': 'findings', 'type': 'stringValue'}])
+                              [{'name': 'findings', 'type': 'stringValue'},
+                               {'name': DLP_FINDINGS_TIMESTAMP,
+                                'type': 'timestamp'}])
     _ = (inspect_data
-         | 'format_findings' >> beam.Map(format_findings, pass_through_columns)
+         | 'format_findings' >> beam.Map(format_findings, pass_through_columns,
+                                         timestamp)
          | 'write_findings' >> beam.io.Write(beam.io.BigQuerySink(
              findings_table, schema=schema,
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
@@ -909,12 +922,14 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
                      project, deid_config, inspect_config,
                      pass_through_columns, deid_columns, per_row_types,
                      dlp_api_name)
-                 | 'get_deid_text' >> beam.Map(get_deid_text,
-                                               pass_through_columns,
-                                               deid_columns))
+                 | 'get_deid_text' >> beam.Map(
+                     get_deid_text, pass_through_columns, deid_columns,
+                     timestamp))
 
   if deid_table:
-    schema = _generate_schema(pass_through_columns + deid_columns)
+    schema = _generate_schema(pass_through_columns + deid_columns +
+                              [{'name': DLP_DEID_TIMESTAMP,
+                                'type': 'timestamp'}])
     _ = (deid_data
          | 'write_deid_text' >> beam.io.Write(beam.io.BigQuerySink(
              deid_table, schema=schema,
@@ -922,7 +937,9 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
 
   if output_csv:
     stringio = StringIO.StringIO()
-    headers = [c['name'] for c in pass_through_columns + target_columns]
+    headers = [c['name'] for c in (pass_through_columns + target_columns +
+                                   [{'name': DLP_DEID_TIMESTAMP,
+                                     'type': 'timestamp'}])]
     writer = unicodecsv.DictWriter(stringio, headers)
     writer.writeheader()
     headerstr = stringio.getvalue()

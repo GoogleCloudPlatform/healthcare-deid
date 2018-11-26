@@ -1,0 +1,109 @@
+<div class="dlp-container">
+  <h2 class="title">Evaluation Pipeline Setup</h2>
+  <form [formGroup]="evalForm" (ngSubmit)="onSubmit()">
+    <mat-form-field>
+      <input matInput type="text"
+                      placeholder="Project"
+                      formControlName="project"
+                      readonly/>
+    </mat-form-field>
+
+    <mat-form-field>
+      <input matInput type="text"
+                      placeholder="Job Name"
+                      formControlName="name"/>
+    </mat-form-field>
+
+    <div formGroupName="input">
+      <h3>Input Setup</h3>
+      <mat-form-field>
+        <mat-select placeholder="Input Method"
+                    formControlName="method">
+          <mat-option *ngFor="let input of inputOptions"
+                    [value]="input.value">
+            {{input.displayString}}
+          </mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <div formGroupName="bigquery"
+           *ngIf="inputMethod.value === evalStores.BIGQUERY">
+        <h4>Findings Query</h4>
+        <mat-form-field>
+          <textarea matInput placeholder="Enter Findings Query"
+                             formControlName="query"></textarea>
+        </mat-form-field>
+        <h4>Golden Table</h4>
+        <bigquery-table [bqTableForm]="goldenBqTable"></bigquery-table>
+      </div>
+
+      <div formGroupName="gcs"
+           *ngIf="inputMethod.value === evalStores.GCS">
+        <mat-form-field>
+          <input matInput type="text"
+                          placeholder="GCS pattern"
+                          formControlName="pattern"/>
+          <span matPrefix>gs://</span>
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput type="text"
+                          placeholder="GCS golden dir"
+                          formControlName="golden"/>
+          <span matPrefix>gs://</span>
+        </mat-form-field>
+      </div>
+    </div>
+
+    <div formGroupName="output">
+      <h3>Output Setup</h3>
+      <mat-form-field>
+        <mat-select placeholder="Output Method"
+                    formControlName="method">
+          <mat-option *ngFor="let output of outputOptions"
+                    [value]="output.value">
+            {{output.displayString}}
+          </mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <div formGroupName="gcs"
+           *ngIf="outputMethod.value === evalStores.GCS">
+        <mat-form-field>
+          <input matInput type="text"
+                          placeholder="GCS results dir"
+                          formControlName="dir"/>
+          <span matPrefix>gs://</span>
+        </mat-form-field>
+        <mat-checkbox formControlName="debug">
+          Write Debug info to GCS
+        </mat-checkbox>
+      </div>
+
+      <div formGroupName="bigquery"
+           *ngIf="outputMethod.value === evalStores.BIGQUERY">
+        <h4>Stats Table</h4>
+        <bigquery-new-table [bqTableForm]="statsBqTable"></bigquery-new-table>
+        <h4>Debug Table</h4>
+        <bigquery-new-table [bqTableForm]="debugBqTable"></bigquery-new-table>
+      </div>
+    </div>
+
+    <div *ngIf="!pipelineRunning" class="pipeline-submit">
+      <button mat-raised-button
+                      type="submit"
+                      color="primary"
+                      class="pipeline-submit"
+                      [disabled]="!evalForm.valid">
+        Submit
+      </button>
+    </div>
+    <div *ngIf="pipelineRunning" class="pipeline-submit">
+      <mat-progress-spinner
+         class="pipeline-spinner"
+         color="primary"
+         diameter="50"
+         mode="indeterminate">
+      </mat-progress-spinner>
+    </div>
+  </form>
+</div>

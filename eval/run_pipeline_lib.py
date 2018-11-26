@@ -265,6 +265,20 @@ def format_aggregate_results_for_bq(aggregate_results_bytes, now):
   return ret
 
 
+def format_aggregate_text_for_bq(text_aggregate_results, timestamp):
+  """Format results as a BigQuery row from a text input."""
+  ret = []
+  aggregate_results = results_pb2.Results()
+  text_format.Merge(text_aggregate_results, aggregate_results)
+  binary_token_results = aggregate_results.binary_token_matching_results
+  ret.append(_create_row(binary_token_results.micro_average_results, timestamp,
+                         [('info_type', 'ALL')]))
+  for result in binary_token_results.per_type_micro_average_results:
+    ret.append(_create_row(result.stats, timestamp,
+                           [('info_type', result.info_type_category)]))
+  return ret
+
+
 def format_debug_info(entity_and_binary_result_pair, now):
   _, binary_token_result = entity_and_binary_result_pair
   for debug_info in binary_token_result.debug_info:
@@ -290,7 +304,7 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
                  mae_input_query, mae_golden_table,
                  write_per_note_stats_to_gcs, results_table,
                  per_note_results_table, debug_output_table, types_to_ignore,
-                 pipeline_args):
+                 timestamp, pipeline_args):
   """Evaluate the input files against the goldens."""
   if ((mae_input_pattern is None) == (mae_input_query is None) or
       (mae_golden_dir is None) == (mae_golden_table is None) or
@@ -330,10 +344,11 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
     per_note_results = (p |
                         beam.Create(filenames) |
                         beam.Map(compare, mae_golden_dir, types_to_ignore))
-  now = str(_get_utcnow())
+  if not timestamp:
+    timestamp = str(_get_utcnow())
   if debug_output_table:
     _ = (per_note_results |
-         beam.FlatMap(format_debug_info, now) |
+         beam.FlatMap(format_debug_info, timestamp) |
          'write_debug_info' >> beam.io.Write(beam.io.BigQuerySink(
              debug_output_table,
              schema=('record_id:STRING,classification:STRING,info_type:STRING,'
@@ -343,7 +358,7 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
 
   if per_note_results_table:
     _ = (per_note_results |
-         beam.Map(format_individual_result_for_bq, now) |
+         beam.Map(format_individual_result_for_bq, timestamp) |
          'write_per_note' >> beam.io.Write(beam.io.BigQuerySink(
              per_note_results_table, schema=('record_id:STRING,' + BASE_SCHEMA),
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
@@ -354,7 +369,7 @@ def run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
          beam.Map(write_aggregate_results_to_gcs, results_dir))
   if results_table:
     _ = (aggregate_results |
-         beam.FlatMap(format_aggregate_results_for_bq, now) |
+         beam.FlatMap(format_aggregate_results_for_bq, timestamp) |
          'write_aggregate' >> beam.io.Write(beam.io.BigQuerySink(
              results_table, schema=('info_type:STRING,' + BASE_SCHEMA),
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))

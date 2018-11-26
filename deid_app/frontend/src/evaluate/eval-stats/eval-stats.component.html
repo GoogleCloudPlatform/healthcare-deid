@@ -1,0 +1,75 @@
+<div class="dlp-container">
+  <h2>Statistics For Evaluation Jobs</h2>
+    <mat-form-field>
+      <input matInput
+             placeholder="Enter Job Name"
+             [formControl]="statsJobForm"
+             [matAutocomplete]="auto">
+      <mat-autocomplete #auto="matAutocomplete"
+                        [displayWith]="displayJob">
+        <mat-option *ngFor="let job of jobsFilter | async"
+             [value]="job">
+          ID: {{job.id}} - Name: {{job.name}}
+        </mat-option>
+      </mat-autocomplete>
+    </mat-form-field>
+
+  <div *ngIf="displayTable">
+    <h2>Stats Table</h2>
+    <mat-form-field>
+      <input matInput
+             (keyup)="setFilterTable($event.target.value)"
+             placeholder="Seach by Info Name">
+    </mat-form-field>
+
+    <table mat-table
+           [dataSource]="dataSource"
+           class="mat-elevation-z8">
+
+      <!-- Info Type -->
+      <ng-container matColumnDef="infoType">
+        <th mat-header-cell *matHeaderCellDef> Info Type </th>
+        <td mat-cell *matCellDef="let stat">{{stat.infoType}}</td>
+      </ng-container>
+
+      <!-- Recall -->
+      <ng-container matColumnDef="recall">
+        <th mat-header-cell *matHeaderCellDef> Recall </th>
+        <td mat-cell *matCellDef="let stat">{{(stat.recall | percent:'1.0-2') || 'undefined'}}</td>
+      </ng-container>
+
+      <!-- Precision -->
+      <ng-container matColumnDef="precision">
+        <th mat-header-cell *matHeaderCellDef> Precision </th>
+        <td mat-cell *matCellDef="let stat">{{(stat.precision | percent:'1.0-2') || 'undefined'}}</td>
+      </ng-container>
+
+      <!-- fScore -->
+      <ng-container matColumnDef="fScore">
+        <th mat-header-cell *matHeaderCellDef> FScore </th>
+        <td mat-cell *matCellDef="let stat">{{(stat.fScore | percent:'1.0-2') || 'undefined'}}</td>
+      </ng-container>
+
+      <!-- True Positives -->
+      <ng-container matColumnDef="truePositives">
+        <th mat-header-cell *matHeaderCellDef> True Positives </th>
+        <td mat-cell *matCellDef="let stat">{{stat.truePositives}}</td>
+      </ng-container>
+
+      <!-- False Positives -->
+      <ng-container matColumnDef="falsePositives">
+        <th mat-header-cell *matHeaderCellDef> False Positives </th>
+        <td mat-cell *matCellDef="let stat">{{stat.falsePositives}}</td>
+      </ng-container>
+
+      <!-- False Negatives -->
+      <ng-container matColumnDef="falseNegatives">
+        <th mat-header-cell *matHeaderCellDef> False Negatives </th>
+        <td mat-cell *matCellDef="let stat">{{stat.falseNegatives}}</td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+    </table>
+  </div>
+</div>

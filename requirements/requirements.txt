@@ -1,3 +1,8 @@
 apache_beam
 google-auth-httplib2
 google-cloud-storage
+flask
+sqlalchemy
+flask_sqlalchemy
+jsonschema
+pymysql==0.8.1

@@ -1,0 +1,31 @@
+<div class="dlp-container">
+  <h2 class="title">Upload CSV to BigQuery</h2>
+  <form [formGroup]="csvForm" (ngSubmit)="submit()">
+    <mat-form-field>
+      <input matInput type="text"
+                      placeholder="Project"
+                      formControlName="project"
+                      readonly/>
+    </mat-form-field>
+
+    <bigquery-new-table [bqTableForm]="bqTable"></bigquery-new-table>
+
+    <div class="upload-item">
+      <input hidden #csvInput type="file"
+                              (change)="selectCsv(csvInput.files)"
+                              accept=".csv">
+      <button mat-stroked-button
+                              type="button"
+                              class="csv-button"
+                              (click)="csvInput.click()"
+                              color="primary">Select CSV</button>
+      <mat-label>
+        {{selectedCsv.value.name}}
+      </mat-label>
+    </div>
+
+    <app-submit #submitComponent [submitPlaceholder]="submitPlaceholder"
+                                 [submitForm]="csvForm">
+    </app-submit>
+  </form>
+</div>

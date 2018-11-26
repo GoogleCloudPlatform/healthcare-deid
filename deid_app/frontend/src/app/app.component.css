@@ -1,0 +1,12 @@
+.title {
+  margin: 0 auto;
+}
+
+mat-sidenav {
+  width: 300px;
+}
+
+mat-button-toggle-group {
+  width: 100%
+}
+

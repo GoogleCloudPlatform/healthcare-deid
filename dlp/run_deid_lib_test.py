@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import
 
+from datetime import datetime
 from functools import partial
 import json
 import os
@@ -61,9 +62,13 @@ def ordered(obj):
     return obj
 
 
+DEID_TIMESTAMP = datetime.utcnow()
+
 EXPECTED_DEID_RESULT = [
-    {'note': 'note1 redacted', 'patient_id': '111', 'record_number': '1'},
-    {'note': 'note2 redacted', 'patient_id': '222', 'record_number': '2'}]
+    {'note': 'note1 redacted', 'patient_id': '111', 'record_number': '1',
+     run_deid_lib.DLP_DEID_TIMESTAMP: DEID_TIMESTAMP},
+    {'note': 'note2 redacted', 'patient_id': '222', 'record_number': '2',
+     run_deid_lib.DLP_DEID_TIMESTAMP: DEID_TIMESTAMP}]
 
 EXPECTED_MAE1 = """<?xml version="1.0" encoding="UTF-8" ?>
 <InspectPhiTask>
@@ -82,18 +87,20 @@ EXPECTED_MAE2 = """<?xml version="1.0" encoding="UTF-8" ?>
 
 DEID_HEADERS = [
     {'name': 'first_name'}, {'name': 'last_name'}, {'name': 'note'},
-    {'name': 'patient_id'}, {'name': 'record_number'}]
+    {'name': 'patient_id'}, {'name': 'record_number'},
+    {'name': run_deid_lib.DLP_DEID_TIMESTAMP}]
 
 
 def bq_schema():
   # 'name' is a special keyword arg for Mock, so we have to set it like this,
   # instead of passing it to the constructor.
-  schema = [Mock(), Mock(), Mock(), Mock(), Mock()]
+  schema = [Mock(), Mock(), Mock(), Mock(), Mock(), Mock()]
   schema[0].name = 'first_name'
   schema[1].name = 'last_name'
   schema[2].name = 'note'
   schema[3].name = 'patient_id'
   schema[4].name = 'record_number'
+  schema[5].name = run_deid_lib.DLP_DEID_TIMESTAMP
   return schema
 
 
@@ -102,15 +109,19 @@ def sval(x):
 
 
 _TABLE_TO_SCHEMA = {
-    'findings_tbl': 'patient_id:STRING, record_number:INTEGER, findings:STRING',
+    'findings_tbl': ('patient_id:STRING, record_number:INTEGER, '
+                     'findings:STRING, dlp_findings_timestamp:TIMESTAMP'),
     'mae_tbl': 'record_id:STRING,xml:STRING',
-    'deid_tbl': 'patient_id:STRING, record_number:INTEGER, note:STRING'}
+    'deid_tbl': ('patient_id:STRING, record_number:INTEGER, note:STRING, '
+                 'dlp_deid_timestamp:TIMESTAMP')}
 
 
 class RunDeidLibTest(unittest.TestCase):
 
   def make_sink(self, table_to_schema, table_name, schema, write_disposition):  # pylint: disable=unused-argument
-    self.assertEqual(table_to_schema[table_name], schema)
+    expected_schema = set(table_to_schema[table_name].split(', '))
+    result_schema = set(schema.split(', '))
+    self.assertEqual(expected_schema, result_schema)
     return beam_testutil.FakeSink(table_name)
 
   def make_csv_output(self, file_path_prefix,
@@ -191,7 +202,7 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
-    rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum']]
+    rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum', 'timestamp']]
     results_table = FakeBqResults(bq_schema(), rows)
     query_job.destination.fetch_data.return_value = results_table
     bq_client = Mock()
@@ -205,7 +216,7 @@ class RunDeidLibTest(unittest.TestCase):
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_json, 'InspectPhiTask',
         'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
         batch_size=1, dtd_dir=dtd_dir, input_csv=None, output_csv=None,
-        pipeline_args=None)
+        timestamp=DEID_TIMESTAMP, pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/request.json')) as f:
@@ -233,11 +244,13 @@ class RunDeidLibTest(unittest.TestCase):
     self.assertEqual(
         beam_testutil.get_table('deid_tbl'),
         [{'patient_id': '111', 'record_number': '1', 'note': 'deid_resp_val',
-          'field_transform_col': 'transformed!!'}])
+          'field_transform_col': 'transformed!!',
+          run_deid_lib.DLP_DEID_TIMESTAMP: DEID_TIMESTAMP}])
     self.assertEqual(
         beam_testutil.get_table('findings_tbl'),
         [{'patient_id': '111', 'record_number': '1',
-          'findings': str(findings)}])
+          'findings': json.dumps(findings),
+          run_deid_lib.DLP_FINDINGS_TIMESTAMP: DEID_TIMESTAMP}])
 
   @patch('apiclient.discovery.build')
   @patch('apache_beam.io.textio.WriteToText')
@@ -263,12 +276,12 @@ class RunDeidLibTest(unittest.TestCase):
         None, None, deid_cfg_json, 'InspectPhiTask', 'project',
         testutil.FakeStorageClient, None, None, 'dlp', batch_size=1,
         dtd_dir=None, input_csv=input_csv, output_csv='output-csv',
-        pipeline_args=None)
+        timestamp=str(DEID_TIMESTAMP), pipeline_args=None)
 
     fake_content.deidentify.assert_called_once()
     self.assertEqual(
         testutil.get_gcs_file('output-csv').strip(),
-        '222,1,deid_resp_val')
+        '222,1,deid_resp_val,{}'.format(DEID_TIMESTAMP))
 
   @patch('apiclient.discovery.build')
   @patch('apache_beam.io.BigQuerySink')
@@ -313,7 +326,7 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
-    rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum']]
+    rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum', 'timestamp']]
     results_table = FakeBqResults(bq_schema(), rows)
     query_job.destination.fetch_data.return_value = results_table
     bq_client = Mock()
@@ -330,7 +343,7 @@ class RunDeidLibTest(unittest.TestCase):
         mae_dir, mae_table, deid_cfg_json, 'InspectPhiTask',
         'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
         batch_size=1, dtd_dir=None, input_csv=None, output_csv=None,
-        pipeline_args=None)
+        timestamp=DEID_TIMESTAMP, pipeline_args=None)
 
     request_body = {}
     with open(os.path.join(
@@ -344,7 +357,8 @@ class RunDeidLibTest(unittest.TestCase):
     self.assertEqual(
         beam_testutil.get_table('deid_tbl'),
         [{'patient_id': '111', 'record_number': '1', 'note': 'deidtext',
-          'last_name': 'myname'}])
+          'last_name': 'myname',
+          run_deid_lib.DLP_DEID_TIMESTAMP: DEID_TIMESTAMP}])
 
   # De-id two notes and batch them together so each of inspect() and deid() is
   # still only called once.
@@ -389,8 +403,9 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
-    rows = [['Boaty', 'McBoatface', 'text and PID and MORE PID', '111', '1'],
-            ['Zephod', 'Beeblebrox', 'note2 text', '222', '2']]
+    rows = [['Boaty', 'McBoatface', 'text and PID and MORE PID', '111', '1',
+             'timestamp'],
+            ['Zephod', 'Beeblebrox', 'note2 text', '222', '2', 'timestamp']]
     results_table = FakeBqResults(bq_schema(), rows)
     query_job.destination.fetch_data.return_value = results_table
     bq_client = Mock()
@@ -404,7 +419,7 @@ class RunDeidLibTest(unittest.TestCase):
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_json, 'InspectPhiTask',
         'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
         batch_size=2, dtd_dir=None, input_csv=None, output_csv=None,
-        pipeline_args=None)
+        timestamp=DEID_TIMESTAMP, pipeline_args=None)
 
     expected_request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
@@ -484,8 +499,9 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
-    rows = [['Boaty', 'McBoatface', 'text and PID and MORE PID', '111', '1'],
-            ['Zephod', 'Beeblebrox', 'note2 text', '222', '2']]
+    rows = [['Boaty', 'McBoatface', 'text and PID and MORE PID', '111', '1',
+             'timestamp'],
+            ['Zephod', 'Beeblebrox', 'note2 text', '222', '2', 'timestamp']]
     results_table = FakeBqResults(bq_schema(), rows)
     query_job.destination.fetch_data.return_value = results_table
     bq_client = Mock()
@@ -499,7 +515,7 @@ class RunDeidLibTest(unittest.TestCase):
         'gs://mae-bucket/mae-dir', 'mae_tbl', deid_cfg_json, 'InspectPhiTask',
         'project', testutil.FakeStorageClient, bq_client, None, 'dlp',
         batch_size=2, dtd_dir=None, input_csv=None, output_csv=None,
-        pipeline_args=None)
+        timestamp=DEID_TIMESTAMP, pipeline_args=None)
 
     expected_request_body = {}
     with open(os.path.join(TESTDATA_DIR, 'testdata/batch_request.json')) as f:
@@ -575,7 +591,7 @@ class RunDeidLibTest(unittest.TestCase):
         None, None, None, None, None, None, deid_cfg_json, 'InspectPhiTask',
         'project', testutil.FakeStorageClient, None, None, 'dlp',
         batch_size=1, dtd_dir=dtd_dir, input_csv=None, output_csv=None,
-        pipeline_args=None)
+        timestamp=None, pipeline_args=None)
 
     with open(
         os.path.join(TESTDATA_DIR, 'mae_testdata', 'sample.dtd')) as f:
@@ -590,7 +606,7 @@ class RunDeidLibTest(unittest.TestCase):
         None, None, None, None, None, None, deid_cfg_json, 'InspectPhiTask',
         'project', testutil.FakeStorageClient, None, None, 'dlp',
         batch_size=1, dtd_dir=dtd_dir, input_csv=None, output_csv=None,
-        pipeline_args=None)
+        timestamp=None, pipeline_args=None)
 
     with open(
         os.path.join(TESTDATA_DIR, 'mae_testdata', 'sample.dtd')) as f:

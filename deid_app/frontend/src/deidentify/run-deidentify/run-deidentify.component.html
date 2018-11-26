@@ -1,0 +1,86 @@
+<div class="dlp-container">
+  <h2 class="title">DLP Pipeline Setup</h2>
+  <form [formGroup]="dlpForm" class="run-deid-form" (ngSubmit)="onSubmit()">
+    <mat-form-field>
+      <input matInput type="text"
+                      placeholder="Project"
+                      formControlName="project"
+                      readonly/>
+    </mat-form-field>
+
+    <mat-form-field>
+      <input matInput type="text"
+                      placeholder="Job Name"
+                      formControlName="name"/>
+    </mat-form-field>
+
+    <div formGroupName="input">
+      <h3>Input Setup</h3>
+      <mat-form-field>
+        <mat-select placeholder="Input Method"
+                    formControlName="method">
+          <mat-option *ngFor="let input of inputOptions"
+                    [value]="input.value">
+            {{input.displayString}}
+          </mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <bigquery-table *ngIf="inputMethod.value === dlpParameters.INPUT_TABLE"
+                    [bqTableForm]="bqTableInput"></bigquery-table>
+
+      <div *ngIf="inputMethod.value === dlpParameters.INPUT_QUERY">
+        <mat-form-field>
+          <textarea matInput placeholder="Enter BigQuery query"
+                    formControlName="query"></textarea>
+        </mat-form-field>
+      </div>
+    </div>
+
+    <div formGroupName="output">
+      <h3>Output Setup</h3>
+      <mat-form-field>
+        <mat-select placeholder="Output Method"
+                    formControlName="method">
+          <mat-option *ngFor="let output of outputOptions"
+                    [value]="output.value">
+            {{output.displayString}}
+          </mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <bigquery-new-table *ngIf="outputMethod.value === dlpParameters.DEID_TABLE"
+                    [bqTableForm]="bqTableOutput"></bigquery-new-table>
+    </div>
+
+    <div formGroupName="findings">
+      <h3>Findings Setup</h3>
+      <mat-form-field>
+        <mat-select placeholder="Findings Method"
+                    formControlName="method">
+          <mat-option *ngFor="let findings of findingsOptions"
+                    [value]="findings.value">
+            {{findings.displayString}}
+          </mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <bigquery-new-table *ngIf="findingsMethod.value === dlpParameters.FINDINGS_TABLE"
+                    [bqTableForm]="bqTableFindings"></bigquery-new-table>
+    </div>
+
+    <h3>Configuration</h3>
+    <div>
+      <mat-form-field>
+        <input matInput type="number"
+                        placeholder="Batch Size"
+                        name="batchSize"
+                        formControlName="batchSize"/>
+      </mat-form-field>
+    </div>
+
+    <app-submit #submitComponent [submitPlaceholder]="submitPlaceholder"
+                                 [submitForm]="dlpForm">
+    </app-submit>
+  </form>
+</div>

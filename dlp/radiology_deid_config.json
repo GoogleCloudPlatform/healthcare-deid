@@ -1,0 +1,108 @@
+{
+  "experimentalConfig": "radiology",
+  "columns": {
+    "passThrough": [
+      {"name": "patient_id", "type": "stringValue"},
+      {"name": "record_number", "type": "integerValue"}
+    ],
+    "inspect": [
+      {"name": "note", "type": "stringValue"}
+    ]
+  },
+  "infoTypeTransformations": [
+    {
+      "infoTypes": [
+        {"name": "PERSON_NAME"},
+        {"name": "PHONE_NUMBER"},
+        {"name": "LOCATION"},
+        {"name": "DATE"},
+        {"name": "TIME"},
+        {"name": "AGE"},
+        {"name": "UNKNOWN_IDENTIFIER"},
+        {"name": "EMAIL_ADDRESS"}
+      ],
+      "primitiveTransformation": {
+        "replaceWithInfoTypeConfig": {}
+      }
+    }
+  ],
+  "keyColumns": ["patient_id", "record_number"],
+  "tagCategories": [
+    {
+      "name": "NAME",
+      "infoTypes": ["PERSON_NAME"]
+    },
+    {
+      "name": "AGE",
+      "infoTypes": ["AGE"]
+    },
+    {
+      "name": "ORGANIZATION",
+      "infoTypes": []
+    },
+    {
+      "name": "ID",
+      "infoTypes": ["UNKNOWN_IDENTIFIER"]
+    },
+    {
+      "name": "DATE",
+      "infoTypes": ["DATE", "TIME"]
+    },
+    {
+      "name": "STREET",
+      "infoTypes": []
+    },
+    {
+      "name": "CITY",
+      "infoTypes": []
+    },
+    {
+      "name": "ZIPCODE",
+      "infoTypes": []
+    },
+    {
+      "name": "STATE",
+      "infoTypes": []
+    },
+    {
+      "name": "COUNTRY",
+      "infoTypes": []
+    },
+    {
+      "name": "LOCATION",
+      "infoTypes": ["LOCATION"]
+    },
+    {
+      "name": "HOSPITAL",
+      "infoTypes": []
+    },
+    {
+      "name": "PHONE",
+      "infoTypes": ["PHONE_NUMBER"]
+    },
+    {
+      "name": "EMAIL",
+      "infoTypes": ["EMAIL_ADDRESS"]
+    },
+    {
+      "name": "URL",
+      "infoTypes": []
+    },
+    {
+      "name": "PROFESSION",
+      "infoTypes": []
+    },
+    {
+      "name": "FIRST_NAME",
+      "infoTypes": []
+    },
+    {
+      "name": "LAST_NAME",
+      "infoTypes": []
+    },
+    {
+      "name": "UNKNOWN_CLASSIFICATION_TYPE",
+      "infoTypes": []
+    }
+  ]
+}

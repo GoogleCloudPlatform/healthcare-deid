@@ -1,0 +1,14 @@
+button.pipeline-submit {
+  margin: 10px 0;
+  width: 40%;
+}
+
+div.pipeline-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pipeline-spinner {
+  margin-bottom: 10px;
+}
