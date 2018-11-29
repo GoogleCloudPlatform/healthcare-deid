@@ -2,7 +2,7 @@ import {Component, OnDestroy, OnInit} from '@angular/core';
 import {MatTableDataSource} from '@angular/material';
 import {Subscription} from 'rxjs';
 
-import {DeidJob} from '../../deid-job';
+import {DeidJob} from '../deid_job';
 import {DlpDemoService} from '../../services/dlp-demo.service';
 
 /**

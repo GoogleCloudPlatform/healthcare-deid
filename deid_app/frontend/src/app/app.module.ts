@@ -1,4 +1,4 @@
-import {HttpClientModule} from '@angular/common/http';
+import {HTTP_INTERCEPTORS, HttpClientModule} from '@angular/common/http';
 import {NgModule} from '@angular/core';
 import {FormsModule, ReactiveFormsModule} from '@angular/forms';
 import {BrowserModule} from '@angular/platform-browser';
@@ -20,6 +20,8 @@ import {EvalPipelineComponent} from '../evaluate/eval-pipeline/eval-pipeline.com
 import {EvalStatsComponent} from '../evaluate/eval-stats/eval-stats.component';
 import {EvaluateComponent} from '../evaluate/evaluate.component';
 import {DlpDemoService} from '../services/dlp-demo.service';
+import {RequestInterceptor} from '../services/http_interceptor';
+import {ErrorHandler} from '../services/error_handler';
 
 import {AppComponent} from './app.component';
 import {AppMaterialModule} from './material.module';
@@ -54,6 +56,8 @@ import {RoutingModule} from './routing.module';
     ReactiveFormsModule,
   ],
   providers: [
+    ErrorHandler,
+    {provide: HTTP_INTERCEPTORS, useClass: RequestInterceptor, multi: true},
     DlpDemoService,
   ],
   bootstrap: [AppComponent]

@@ -69,15 +69,36 @@ CSV_FIELD_TYPE = {
 }
 
 deid_schema = {
-    'type': 'object',
+    'type':
+        'object',
     'properties': {
-        'name': {'type': 'string'},
-        'inputMethod': {'type': 'string'},
-        'inputInfo': {'type': 'string'},
-        'outputMethod': {'type': 'string'},
-        'outputInfo': {'type': 'string'},
-        'findingsTable': {'type': 'string'},
-        'batchSize': {'type': 'number'},
+        'name': {
+            'type': 'string'
+        },
+        'inputMethod': {
+            'type': 'string'
+        },
+        'inputInfo': {
+            'type': 'string'
+        },
+        'outputMethod': {
+            'type': 'string'
+        },
+        'outputInfo': {
+            'type': 'string'
+        },
+        'findingsTable': {
+            'type': 'string'
+        },
+        'maeTable': {
+            'type': 'string'
+        },
+        'maeDir': {
+            'type': 'string'
+        },
+        'batchSize': {
+            'type': 'number'
+        },
     },
     'required': [
         'name',
@@ -280,7 +301,10 @@ def verify_gcs_path(path):
   """
   storage_client = storage.Client()
   path_info = gcsutil.GcsFileName.from_path(path)
-  bucket = storage_client.bucket(path_info.bucket)
+  try:
+    bucket = storage_client.get_bucket(path_info.bucket)
+  except exceptions.NotFound:
+    return False
   return storage.Blob(bucket=bucket,
                       name=path_info.blob).exists(storage_client)
 
@@ -610,6 +634,8 @@ def deidentify():
     # if table not found, a new one will be created
     pass
 
+  mae_table = request.json.get('maeTable')
+  mae_dir = request.json.get('maeDir')
   batch_size = request.json.get('batchSize') or 1
 
   pipeline_args = ['--project', app.config['PROJECT_ID']]
@@ -658,12 +684,9 @@ def evaluate():
   input_json = flask.request.json['input']
   gcs_input, bq_input = input_json.get('gcs'), input_json.get('bigquery')
   if gcs_input:
+
     mae_input_pattern = job_data['findings'] = gcs_input['pattern'] + '*.xml'
     mae_golden_dir = job_data['goldens'] = gcs_input['golden']
-    if not verify_gcs_path(gcs_input['pattern']):
-      return flask.jsonify(text='input gcs bucket does not exist'), 400
-    if not verify_gcs_path(gcs_input['golden']):
-      return flask.jsonify(text='golden gcs bucket does not exist'), 400
   if bq_input:
     job_data['findings'] = bq_input['query']
     mae_input_query = append_project(job_data['findings'])

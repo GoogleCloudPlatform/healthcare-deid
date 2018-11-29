@@ -1,5 +1,5 @@
 import {Component, OnInit, OnDestroy, ViewChild} from '@angular/core';
-import {FormControl, FormGroup, Validators} from '@angular/forms';
+import {FormBuilder, FormControl, FormGroup, Validators} from '@angular/forms';
 import {MatSnackBar} from '@angular/material';
 import {Observable, Subscription} from 'rxjs';
 import {finalize} from 'rxjs/operators';
@@ -18,6 +18,8 @@ enum DlpParameters {
   INPUT_TABLE = 'input_table',
   DEID_TABLE = 'deid_table',
   FINDINGS_TABLE = 'findings_table',
+  MAE_TABLE = 'mae_table',
+  MAE_DIR = 'mae_dir',
 }
 
 /**
@@ -53,33 +55,40 @@ export class RunDeidentifyComponent implements OnInit, OnDestroy {
     {value: this.dlpParameters.FINDINGS_TABLE, displayString: 'BigQuery'},
   ];
 
-  dlpForm = new FormGroup({
-    project: new FormControl(''),
-    name: new FormControl(new Date().toLocaleString(), Validators.required),
-    input: new FormGroup({
-      method: new FormControl('', Validators.required),
+  maeOptions: DisplayOption[] = [
+    {value: this.dlpParameters.MAE_TABLE, displayString: 'BigQuery'},
+    {value: this.dlpParameters.MAE_DIR, displayString: 'Google Cloud Storage'},
+  ];
+
+  dlpForm = this.formBuilder.group({
+    project: '',
+    name: [new Date().toLocaleString(), Validators.required],
+    input: this.formBuilder.group({
+      method: ['', Validators.required],
       bqTable: BigQueryTable.buildEntry(),
-      query: new FormControl('', Validators.required),
+      query: ['', Validators.required],
     }),
-    output: new FormGroup({
-      method: new FormControl('', Validators.required),
+    output: this.formBuilder.group({
+      method: ['', Validators.required],
       bqTable: BigQueryNewTable.buildEntry(),
     }),
-    findings: new FormGroup({
-      method: new FormControl('', Validators.required),
+    findings: this.formBuilder.group({
+      method: ['', Validators.required],
       bqTable: BigQueryNewTable.buildEntry(),
     }),
-    batchSize: new FormControl(1),
+    mae: this.formBuilder.group({
+      method: ['', Validators.required],
+      bqTable: BigQueryNewTable.buildEntry(),
+      gcs: ['', Validators.required],
+    }),
+    batchSize: 1,
   });
 
   constructor(
       private dlpDemoService: DlpDemoService,
       public snackBar: MatSnackBar,
+      private formBuilder: FormBuilder,
   ) {}
-
-  get jobName(): FormControl {
-    return this.dlpForm.get('name') as FormControl;
-  }
 
   get inputMethod(): FormControl {
     return this.dlpForm.get('input.method') as FormControl;
@@ -109,6 +118,14 @@ export class RunDeidentifyComponent implements OnInit, OnDestroy {
     return this.dlpForm.get('findings.bqTable') as FormGroup;
   }
 
+  get maeMethod(): FormControl {
+    return this.dlpForm.get('mae.method') as FormControl;
+  }
+
+  get bqTableMae(): FormGroup {
+    return this.dlpForm.get('mae.bqTable') as FormGroup;
+  }
+
   ngOnInit() {
     /* Get the project name from the server. */
     this.subscriptions.add(this.dlpDemoService.project.subscribe(
@@ -124,6 +141,17 @@ export class RunDeidentifyComponent implements OnInit, OnDestroy {
         this.inputQuery.disable();
       }
     }));
+
+    this.subscriptions.add(
+        this.maeMethod.valueChanges.subscribe(method => {
+          if (method === this.dlpParameters.MAE_TABLE) {
+            this.bqTableMae.enable();
+            this.dlpForm.get('mae.gcs').disable();
+          } else if (method === this.dlpParameters.MAE_DIR) {
+            this.bqTableMae.disable();
+            this.dlpForm.get('mae.gcs').enable();
+          }
+        }));
   }
 
   ngOnDestroy() {
@@ -149,23 +177,31 @@ export class RunDeidentifyComponent implements OnInit, OnDestroy {
       outputMethod: '',
       outputInfo: '',
     };
-    job.name = this.jobName.value;
-    job.inputMethod = this.inputMethod.value;
+    const formVal = this.dlpForm.value;
+    job.name = formVal.name;
+    job.inputMethod = formVal.input.method;
     if (job.inputMethod === this.dlpParameters.INPUT_TABLE) {
       job.inputInfo = this.getTableName(this.bqTableInput);
     } else if (job.inputMethod === this.dlpParameters.INPUT_QUERY) {
-      job.inputInfo = this.inputQuery.value;
+      job.inputInfo = formVal.input.query;
     }
 
-    job.outputMethod = this.outputMethod.value;
+    job.outputMethod = formVal.output.method;
     if (job.outputMethod === this.dlpParameters.DEID_TABLE) {
       job.outputInfo = this.getTableName(this.bqTableOutput);
     }
 
     job.findingsTable = this.getTableName(this.bqTableFindings);
+    if (formVal.mae.method === this.dlpParameters.MAE_TABLE) {
+      job.maeTable = this.getTableName(this.bqTableMae);
+    } else if (formVal.mae.method === this.dlpParameters.MAE_DIR) {
+      job.maeDir = `gs://${formVal.mae.gcs}`;
+    }
     job.batchSize = this.dlpForm.get('batchSize').value;
 
-    this.jobName.setValue(new Date().toLocaleString());
+    this.dlpForm.patchValue({
+      name: new Date().toLocaleString(),
+    });
     this.submitComp.waiting = true;
     this.dlpDemoService.deidentifyData(job)
         .pipe(finalize(() => this.submitComp.waiting = false))

@@ -3,7 +3,7 @@ import {FormControl, FormGroup} from '@angular/forms';
 import {combineLatest, Observable} from 'rxjs';
 import {map, startWith, switchMap} from 'rxjs/operators';
 
-import {DeidJob} from '../../deid-job';
+import {DeidJob} from '../deid_job';
 import {DlpDemoService, NoteMetaData} from '../../services/dlp-demo.service';
 import {Annotation, TextVisualizerData} from '../../services/dlp-demo.service';
 

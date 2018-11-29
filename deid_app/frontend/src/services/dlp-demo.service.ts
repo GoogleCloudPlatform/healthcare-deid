@@ -3,7 +3,7 @@ import {Injectable} from '@angular/core';
 import {BehaviorSubject, Observable} from 'rxjs';
 import {map} from 'rxjs/operators';
 
-import {DeidJob} from '../deid-job';
+import {DeidJob} from '../deidentify/deid_job';
 import {EvalJob, EvalStats} from '../evaluate/eval_job';
 
 /**
@@ -89,6 +89,8 @@ export interface DlpPipelineRequest {
   outputMethod: string;
   outputInfo: string;
   findingsTable?: string;
+  maeTable?: string;
+  maeDir?: string;
   batchSize?: number;
 }
 

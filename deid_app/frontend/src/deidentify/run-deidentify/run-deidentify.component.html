@@ -69,6 +69,31 @@
                     [bqTableForm]="bqTableFindings"></bigquery-new-table>
     </div>
 
+    <div formGroupName="mae">
+      <h3>MAE Setup</h3>
+      <mat-form-field>
+        <mat-select placeholder="Mae Method"
+                    formControlName="method">
+          <mat-option *ngFor="let mae of maeOptions"
+                    [value]="mae.value">
+            {{mae.displayString}}
+          </mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <bigquery-new-table
+                    *ngIf="maeMethod.value === dlpParameters.MAE_TABLE"
+                    [bqTableForm]="bqTableMae"></bigquery-new-table>
+
+      <mat-form-field
+        *ngIf="maeMethod.value === dlpParameters.MAE_DIR">
+        <input matInput type="text"
+                        placeholder="GCS folder"
+                        formControlName="gcs"/>
+        <span matPrefix>gs://</span>
+      </mat-form-field>
+    </div>
+
     <h3>Configuration</h3>
     <div>
       <mat-form-field>
