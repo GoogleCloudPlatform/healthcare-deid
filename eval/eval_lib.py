@@ -179,7 +179,7 @@ def _deserialize_individual_result(record_id, serialized_stats,
   ir = IndividualResult()
   ir.record_id = record_id
   ir.stats.ParseFromString(serialized_stats)
-  for type_name, stats in per_type_serialized_stats.iteritems():
+  for type_name, stats in per_type_serialized_stats.items():
     ir.per_type[type_name].ParseFromString(stats)
   ir.typeless.ParseFromString(serialized_typeless)
 
@@ -200,7 +200,7 @@ class IndividualResult(object):
   # serialize them here.
   def __reduce__(self):
     per_type_serialized = {}
-    for type_name, stats in self.per_type.iteritems():
+    for type_name, stats in self.per_type.items():
       per_type_serialized[type_name] = stats.SerializeToString()
     return (_deserialize_individual_result, (self.record_id,
                                              self.stats.SerializeToString(),
@@ -343,7 +343,7 @@ def strict_entity_compare(findings, golden_findings, record_id):
 
 def _sum_typed_stats(per_type, stats):
   """Sums the true/false positives/negatives of each category into stats."""
-  for category_stats in per_type.itervalues():
+  for category_stats in per_type.values():
     stats.true_positives += category_stats.true_positives
     stats.false_positives += category_stats.false_positives
     stats.false_negatives += category_stats.false_negatives
@@ -352,7 +352,7 @@ def _sum_typed_stats(per_type, stats):
 def _map_index_to_type(findings, ignore_nonalphanumerics):
   result = {}
   for finding in findings:
-    for index in xrange(finding.start, finding.end):
+    for index in range(finding.start, finding.end):
       if (not ignore_nonalphanumerics) or finding.text[index -
                                                        finding.start].isalnum():
         result[index] = finding.category
@@ -381,8 +381,7 @@ def characters_count_compare(findings,
   findings_map = _map_index_to_type(findings, ignore_nonalphanumerics)
   golden_findings_map = _map_index_to_type(golden_findings,
                                            ignore_nonalphanumerics)
-  all_indices = set(findings_map.iterkeys()).union(
-      golden_findings_map.iterkeys())
+  all_indices = set(findings_map.keys()).union(golden_findings_map.keys())
   for index in all_indices:
     category = findings_map.get(index, None)
     golden_category = golden_findings_map.get(index, None)
@@ -410,7 +409,7 @@ def _count_intervals(findings_indices, golden_findings_indices, stats):
   max_char = max(itertools.chain(findings_indices, golden_findings_indices))
   for (finding_in_char, golden_finding_in_char), _ in itertools.groupby(
       (i in findings_indices, i in golden_findings_indices)
-      for i in xrange(max_char + 1)):
+      for i in range(max_char + 1)):
     if golden_finding_in_char:
       if finding_in_char:
         stats.true_positives += 1
@@ -446,17 +445,17 @@ def intervals_count_compare(findings, golden_findings, record_id):
   }
   for category in all_categories:
     findings_indices = {
-        index for index, finding_category in findings_map.iteritems()
+        index for index, finding_category in findings_map.items()
         if finding_category == category
     }
     golden_findings_indices = {
-        index for index, finding_category in golden_findings_map.iteritems()
+        index for index, finding_category in golden_findings_map.items()
         if finding_category == category
     }
     _count_intervals(findings_indices, golden_findings_indices,
                      result.per_type[category])
   _count_intervals(
-      set(findings_map.iterkeys()), set(golden_findings_map.iterkeys()),
+      set(findings_map.keys()), set(golden_findings_map.keys()),
       result.typeless)
   _sum_typed_stats(result.per_type, result.stats)
   calculate_stats(result.stats)
@@ -494,7 +493,7 @@ def _deserialize_accumulated_results(
   ar = AccumulatedResults()
   ar.micro.ParseFromString(serialized_micro_stats)
   ar.macro = macro
-  for type_name, stats in per_type_serialized_stats.iteritems():
+  for type_name, stats in per_type_serialized_stats.items():
     ar.per_type[type_name].ParseFromString(stats)
   ar.typeless_micro.ParseFromString(serialized_typeless_micro_stats)
   ar.typeless_macro = typeless_macro
@@ -517,7 +516,7 @@ class AccumulatedResults(object):
   # serialize them here.
   def __reduce__(self):
     per_type_serialized = {}
-    for type_name, stats in self.per_type.iteritems():
+    for type_name, stats in self.per_type.items():
       per_type_serialized[type_name] = stats.SerializeToString()
     return (_deserialize_accumulated_results,
             (self.micro.SerializeToString(), self.macro, per_type_serialized,
@@ -532,7 +531,7 @@ class AccumulatedResults(object):
     self.micro.true_positives += result.stats.true_positives
     self.micro.false_positives += result.stats.false_positives
     self.micro.false_negatives += result.stats.false_negatives
-    for info_type, stats in result.per_type.iteritems():
+    for info_type, stats in result.per_type.items():
       self.per_type[info_type].true_positives += stats.true_positives
       self.per_type[info_type].false_positives += stats.false_positives
       self.per_type[info_type].false_negatives += stats.false_negatives
@@ -564,7 +563,7 @@ class AccumulatedResults(object):
   def per_type_protos(self):
     """Return the per-type stats as a list of PerTypeStats protos."""
     protos = []
-    for info_type, stats in sorted(self.per_type.iteritems()):
+    for info_type, stats in sorted(self.per_type.items()):
       pb = results_pb2.PerTypeStats()
       pb.info_type_category = info_type
       pb.stats.CopyFrom(calculate_stats(stats))
@@ -579,8 +578,8 @@ class AccumulatedResults(object):
         self.micro.false_positives + other.micro.false_positives)
     new.micro.false_negatives = (
         self.micro.false_negatives + other.micro.false_negatives)
-    for info_type, stats in itertools.chain(self.per_type.iteritems(),
-                                            other.per_type.iteritems()):
+    for info_type, stats in itertools.chain(self.per_type.items(),
+                                            other.per_type.items()):
       new.per_type[info_type].true_positives += stats.true_positives
       new.per_type[info_type].false_positives += stats.false_positives
       new.per_type[info_type].false_negatives += stats.false_negatives

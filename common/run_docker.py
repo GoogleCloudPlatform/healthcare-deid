@@ -65,7 +65,7 @@ def run_docker(commands, project_id, log_directory, docker_image_name, inputs,
     outputs: List of (name, src, dest) tuples for files to be copied out of the
       docker container to GCS after running.
     service_account: The service account to run as. May be ''.
-    credentials: An oauth2client.client.GoogleCredentials objects.
+    credentials: A google.auth.credentials.Credentials object.
     exceptions: List, populated by @capture_exceptions if this function
       throws an exception.
   """
@@ -126,7 +126,7 @@ def run_pipeline(input_pattern, function, args, max_num_threads,
     args: Additional arguments to pass to the function.
     max_num_threads: Maximum amount of operations to run in parallel.
     storage_client: A google.cloud.storage.Client object.
-    credentials: An oauth2client.client.GoogleCredentials objects.
+    credentials: A google.auth.credentials.Credentials object.
 
   Returns:
     None on success, error string on failure.

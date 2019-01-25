@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
 load("@my_deps//:requirements.bzl", "requirement")
-load("@org_pubref_rules_protobuf//python:rules.bzl", "py_proto_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -26,14 +26,14 @@ licenses(["notice"])  # Apache License 2.0
 py_library(
     name = "eval_lib",
     srcs = ["eval_lib.py"],
-    deps = [
-        ":results_py_pb2",
-    ],
+    srcs_version = "PY2AND3",
+    deps = [":results_py_pb2"],
 )
 
 py_test(
     name = "eval_lib_test",
     srcs = ["eval_lib_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":eval_lib",
         ":results_py_pb2",
@@ -46,9 +46,12 @@ py_library(
     deps = [
         ":eval_lib",
         ":results_py_pb2",
-        "//common:gcsutil",
         requirement("apache_beam"),
+        requirement("fastavro"),
+        requirement("google-api-core"),
+        requirement("google-apitools"),
         requirement("google-cloud-storage"),
+        "//common:gcsutil",
     ],
 )
 
@@ -59,9 +62,12 @@ py_test(
     deps = [
         ":results_py_pb2",
         ":run_pipeline_lib",
+        requirement("apache_beam"),
+        requirement("fastavro"),
+        requirement("google-api-core"),
+        requirement("google-apitools"),
         "//common:beam_testutil",
         "//common:testutil",
-        requirement("apache_beam"),
     ],
 )
 
@@ -81,5 +87,5 @@ proto_library(
 
 py_proto_library(
     name = "results_py_pb2",
-    protos = ["results.proto"],
+    srcs = ["results.proto"],
 )

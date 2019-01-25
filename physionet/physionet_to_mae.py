@@ -21,7 +21,6 @@ import logging
 import sys
 
 from physionet import physionet_to_mae_lib
-import google.auth
 
 
 def main():
@@ -35,11 +34,10 @@ def main():
   # add it to pipeline_args as well.
   pipeline_args += ['--project', args.project]
 
-  credentials, _ = google.auth.default()
+  physionet_to_mae_lib.run_pipeline(args.input_pattern, args.mae_output_dir,
+                                    args.mae_task_name, args.project,
+                                    pipeline_args)
 
-  physionet_to_mae_lib.run_pipeline(
-      args.input_pattern, args.mae_output_dir, args.mae_task_name, credentials,
-      args.project, pipeline_args)
 
 if __name__ == '__main__':
   main()

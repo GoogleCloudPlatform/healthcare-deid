@@ -68,7 +68,7 @@ def normalize_floats(pb):
       # This is a map; only recurse if the values have a message type.
       if (desc.message_type.fields_by_number[2].type ==
           descriptor.FieldDescriptor.TYPE_MESSAGE):
-        for v in values.itervalues():
+        for v in values.values():
           normalize_floats(v)
     elif desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE:
       for v in values:

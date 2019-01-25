@@ -19,11 +19,11 @@ syntax = "proto3";
 package eval;
 
 message Results {
-  // Aggregate results for strict entity matching comparison.
-  AggregateMatchingResults strict_entity_matching_results = 1;
-
   // Aggregate results for binary token matching comparison.
-  AggregateMatchingResults binary_token_matching_results = 2;
+  AggregateMatchingResults binary_token_matching_results = 1;
+
+  // Aggregate results for strict entity matching comparison.
+  AggregateMatchingResults strict_entity_matching_results = 2;
 
   // Per-note binary token matching results.
   repeated IndividualResult individual_binary_token_matching_results = 3;

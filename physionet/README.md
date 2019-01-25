@@ -63,9 +63,9 @@ bazel run physionet:bigquery_to_gcs -- \
 ### Run DeID
 
 run_deid.py runs Physionet De-ID via the Pipelines API on a sharded file in GCS.
-The PhysioNet code and configuration has been packaged into a Docker container
-at gcr.io/genomics-api-test/physionet. Running it requires having the Google
-Python API client and Google Cloud Storage client installed:
+It uses a docker image from gcr.io/YOUR_PROJECT/physionet which can be built
+using docker/cloudbuild.yaml. Running it requires having the Google Python API
+client and Google Cloud Storage client installed:
 
 Example usage (run with `--help` for more about the arguments):
 
@@ -95,8 +95,8 @@ bazel run physionet:gcs_to_bigquery -- \
 ### GCS PhysioNet to MAE
 
 You can use physionet_to_mae to convert the PhysioNet DeID results to MAE
-format. run_deid needs to be run with --include_original_in_output to generate
-output that will work as input for physionet_to_mae.
+format. run_deid needs to be run with --include_original_in_pn_output=true to
+generate output that will work as input for physionet_to_mae.
 
 Example usage:
 

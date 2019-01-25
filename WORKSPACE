@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-new_http_archive(
-    name = "six_archive",
-    build_file = "six.BUILD",
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "six_archive",  # Required by @com_google_protobuf.
+    build_file = "@com_google_protobuf//:six.BUILD",
     url = "https://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
 )
 
@@ -24,13 +27,42 @@ bind(
 )
 
 git_repository(
-    name = "org_pubref_rules_protobuf",
-    remote = "https://github.com/pubref/rules_protobuf.git",
-    tag = "v0.8.1",
+    name = "bazel_skylib",  # Required by @com_google_protobuf.
+branch = "master",
+    remote = "https://github.com/bazelbuild/bazel-skylib.git",
 )
 
-load("@org_pubref_rules_protobuf//python:rules.bzl", "py_proto_repositories")
-py_proto_repositories()
+git_repository(
+    name = "io_bazel",
+    branch = "master",
+    remote = "https://github.com/bazelbuild/bazel.git",
+)
+
+bind(
+    name = "zlib",  # Required by @com_google_protobuf.
+    actual = "@io_bazel//third_party/zlib:zlib",
+)
+
+git_repository(
+    name = "com_google_protobuf",
+    branch = "master",
+    remote = "https://github.com/google/protobuf.git",
+)
+
+bind(
+    name = "protobuf",
+    actual = "@com_google_protobuf//:protobuf",
+)
+
+bind(
+    name = "protobuf_python",
+    actual = "@com_google_protobuf//:protobuf_python",
+)
+
+bind(
+    name = "protobuf_python_genproto",
+    actual = "@com_google_protobuf//:protobuf_python_genproto",
+)
 
 git_repository(
     name = "io_bazel_rules_python",

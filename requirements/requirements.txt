@@ -1,8 +1,11 @@
 apache_beam
+google-apitools
 google-auth-httplib2
 google-cloud-storage
+fastavro
 flask
 sqlalchemy
 flask_sqlalchemy
 jsonschema
 pymysql==0.8.1
+six==1.10.0

@@ -35,10 +35,10 @@ def main():
   storage_client = storage.Client(args.project)
 
   errors = run_deid_lib.run_pipeline(
-      args.input_pattern, args.output_directory, args.config_file,
-      args.project, args.log_directory, args.dict_directory,
-      args.lists_directory, args.max_num_threads, args.service_account,
-      args.include_original_in_pn_output, storage_client)
+      args.input_pattern, args.output_directory, args.config_file, args.project,
+      args.log_directory, args.dict_directory, args.lists_directory,
+      args.max_num_threads, args.include_original_in_pn_output,
+      args.service_account, storage_client)
 
   if errors:
     logging.error(errors)

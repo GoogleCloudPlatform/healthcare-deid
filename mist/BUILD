@@ -26,6 +26,7 @@ licenses(["notice"])  # Apache License 2.0
 py_library(
     name = "run_mist_lib",
     srcs = ["run_mist_lib.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//common:run_docker",
     ],
@@ -34,6 +35,8 @@ py_library(
 py_binary(
     name = "run_mist",
     srcs = ["run_mist.py"],
+    default_python_version = "PY3",
+    srcs_version = "PY2AND3",
     deps = [
         ":run_mist_lib",
         requirement("google-cloud-storage"),
@@ -46,6 +49,9 @@ py_library(
     srcs = ["bigquery_to_gcs_lib.py"],
     deps = [
         requirement("apache_beam"),
+        requirement("fastavro"),
+        requirement("google-api-core"),
+        requirement("google-apitools"),
     ],
 )
 
@@ -66,8 +72,11 @@ py_library(
     name = "gcs_to_bigquery_lib",
     srcs = ["gcs_to_bigquery_lib.py"],
     deps = [
-        "//physionet:files_to_physionet_records",
         requirement("apache_beam"),
+        requirement("fastavro"),
+        requirement("google-api-core"),
+        requirement("google-apitools"),
+        "//physionet:files_to_physionet_records",
     ],
 )
 

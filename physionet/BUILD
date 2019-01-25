@@ -26,10 +26,10 @@ py_binary(
     name = "physionet_deid_pipeline",
     srcs = ["physionet_deid_pipeline.py"],
     deps = [
-        ":bigquery_to_gcs",
-        ":gcs_to_bigquery",
+        ":bigquery_to_gcs_lib",
+        ":gcs_to_bigquery_lib",
         ":physionet_to_mae_lib",
-        ":run_deid",
+        ":run_deid_lib",
         requirement("google-cloud-storage"),
     ],
 )
@@ -40,6 +40,9 @@ py_library(
     srcs = ["bigquery_to_gcs_lib.py"],
     deps = [
         requirement("apache_beam"),
+        requirement("fastavro"),
+        requirement("google-api-core"),
+        requirement("google-apitools"),
     ],
 )
 
@@ -62,6 +65,9 @@ py_library(
     deps = [
         ":files_to_physionet_records",
         requirement("apache_beam"),
+        requirement("fastavro"),
+        requirement("google-api-core"),
+        requirement("google-apitools"),
     ],
 )
 
@@ -75,7 +81,9 @@ py_binary(
 py_library(
     name = "run_deid_lib",
     srcs = ["run_deid_lib.py"],
+    srcs_version = "PY2AND3",
     deps = [
+        requirement("google-auth-httplib2"),
         "//common:run_docker",
     ],
 )
@@ -83,6 +91,8 @@ py_library(
 py_binary(
     name = "run_deid",
     srcs = ["run_deid.py"],
+    default_python_version = "PY3",
+    srcs_version = "PY2AND3",
     deps = [
         ":run_deid_lib",
         requirement("google-cloud-storage"),
@@ -94,7 +104,8 @@ py_test(
     srcs = ["run_deid_lib_test.py"],
     # Flaky after cl/212996664
     flaky = 1,
-    deps = [":run_deid"],
+    srcs_version = "PY2AND3",
+    deps = [":run_deid_lib"],
 )
 
 # Rules for converting physionet output to MAE format.
@@ -103,10 +114,13 @@ py_library(
     srcs = ["physionet_to_mae_lib.py"],
     deps = [
         ":files_to_physionet_records",
+        requirement("apache_beam"),
+        requirement("fastavro"),
+        requirement("google-api-core"),
+        requirement("google-apitools"),
+        requirement("google-cloud-storage"),
         "//common:gcsutil",
         "//common:mae",
-        requirement("apache_beam"),
-        requirement("google-cloud-storage"),
     ],
 )
 
@@ -133,6 +147,9 @@ py_library(
     srcs = ["files_to_physionet_records.py"],
     deps = [
         requirement("apache_beam"),
+        requirement("fastavro"),
+        requirement("google-api-core"),
+        requirement("google-apitools"),
     ],
 )
 

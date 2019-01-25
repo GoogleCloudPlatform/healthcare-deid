@@ -16,6 +16,12 @@ py_library(
 py_binary(
     name = "model",
     srcs = ["model.py"],
+    deps = [":model_lib"],
+)
+
+py_library(
+    name = "model_lib",
+    srcs = ["model.py"],
     deps = [":config"],
 )
 
@@ -27,10 +33,10 @@ py_binary(
     ],
     deps = [
         ":config",
-        ":model",
+        ":model_lib",
+        requirement("google-cloud-storage"),
         "//common:gcsutil",
         "//dlp:run_deid_lib",
         "//eval:run_pipeline_lib",
-        requirement("google-cloud-storage"),
     ],
 )

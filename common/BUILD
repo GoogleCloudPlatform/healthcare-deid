@@ -23,23 +23,33 @@ licenses(["notice"])  # Apache License 2.0
 py_library(
     name = "run_docker",
     srcs = ["run_docker.py"],
-    deps = [":gcsutil"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gcsutil",
+        requirement("google-auth-httplib2"),
+    ],
 )
 
 py_test(
     name = "run_docker_test",
     srcs = ["run_docker_test.py"],
-    deps = [":run_docker"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gcsutil",
+        ":run_docker",
+    ],
 )
 
 py_library(
     name = "mae",
     srcs = ["mae.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
     name = "mae_test",
     srcs = ["mae_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":mae",
     ],
@@ -48,23 +58,30 @@ py_test(
 py_library(
     name = "gcsutil",
     srcs = ["gcsutil.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_library(
     name = "testutil",
     srcs = ["testutil.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_library(
     name = "beam_testutil",
     srcs = ["beam_testutil.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":testutil",
         requirement("apache_beam"),
+        requirement("fastavro"),
+        requirement("google-api-core"),
+        requirement("google-apitools"),
     ],
 )
 
 py_library(
     name = "unicodecsv",
     srcs = ["unicodecsv.py"],
+    srcs_version = "PY2AND3",
 )

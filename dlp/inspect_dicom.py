@@ -98,8 +98,7 @@ def main():
         image_bytes = base64.b64encode(image_file.read()).rstrip('\n')
     if args.dicom_file:
       image_bytes = get_dicom_bytes(args.dicom_file)
-    print logging.info(
-        'We detected %d words.', get_word_count(images, image_bytes))
+    logging.info('We detected %d words.', get_word_count(images, image_bytes))
     return
 
   output_file = '/tmp/tmp.csv'
@@ -115,8 +114,7 @@ def main():
       if args.csv_output:
         output.write('%s,%d\n' % (filename, count))
       else:
-        print logging.info('We detected %d words in file %s.',
-                           count, filename)
+        logging.info('We detected %d words in file %s.', count, filename)
   output.close()
 
 if __name__ == '__main__':
