@@ -17,8 +17,11 @@
 package com.google.cloud.healthcare.deid.redactor;
 
 import com.google.cloud.healthcare.deid.redactor.protos.DicomConfigProtos.DicomConfig;
+import com.google.protobuf.TextFormat;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,6 +54,7 @@ public class DicomRedactor {
   // Replace SOPInstanceUID, StudyInstanceUID, SeriesInstanceUID, and MediaStorageSOPInstanceUID.
   private static final List<Integer> replaceUIDs =
       new ArrayList<>(Arrays.asList(0x00080018, 0x0020000D, 0x0020000E, 0x00020003));
+  private static final String CHC_BASIC_FILE = "chc_basic.textproto";
 
    /**
    *  Iterates over all tags in a DICOM file and redacts based on tagSet. If isKeepList is true, the
@@ -92,6 +96,7 @@ public class DicomRedactor {
   /**
    * Parses DicomConfig proto to produce a RedactorSettings object.
    * @throws IllegalArgumentException if the configuration structure or tags are invalid.
+   * @throws InternalError if there is an exception trying to load a predefined profile.
    */
   private RedactorSettings parseConfig(DicomConfig config) throws IllegalArgumentException {
     RedactorSettings ret = new RedactorSettings();
@@ -105,6 +110,34 @@ public class DicomRedactor {
         ret.isKeepList = false;
         tags = config.getRemoveList();
         break;
+      case FILTER_PROFILE:
+        switch(config.getFilterProfile()) {
+          case TAG_FILTER_PROFILE_UNSPECIFIED:
+          case CHC_BASIC:
+            DicomConfig.Builder configBuilder = DicomConfig.newBuilder();
+            TextFormat.Parser parser = TextFormat.Parser.newBuilder().build();
+            final StringBuilder protoString = new StringBuilder();
+            try (BufferedReader protoReader = new BufferedReader(new InputStreamReader(
+                DicomRedactor.class.getClassLoader().getResourceAsStream(CHC_BASIC_FILE)))) {
+              String line;
+              while (true) {
+                line = protoReader.readLine();
+                if (line == null) {
+                  break;
+                }
+                protoString.append(line).append('\n');
+              }
+              parser.merge(protoString.toString(), configBuilder);
+              if (configBuilder.hasFilterProfile()) {
+                throw new InternalError("Profile cannot point to another profile");
+              }
+            } catch (Exception e) {
+              throw new InternalError("Failed to load selected profile.", e);
+            }
+            return parseConfig(configBuilder.build());
+          default:
+            throw new IllegalArgumentException("Config specifies an unrecognized profile.");
+        }
       default:
         throw new IllegalArgumentException("Config does not specify a tag filtration method.");
     }

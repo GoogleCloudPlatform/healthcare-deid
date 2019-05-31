@@ -500,5 +500,25 @@ public final class DicomRedactorTest {
     redactAndVerify(metadata, dataset, expectedMetadata, expected,
         new DicomRedactor(config, prefix));
   }
+
+  @Test
+  public void redactCHCBasicProfile() throws Exception {
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes dataset = new Attributes();
+    dataset.setString(Tag.IdentifyingComments, VR.LT, "Test String");
+    dataset.setString(Tag.PatientName, VR.PN, "Person^Name");
+    dataset.setString(Tag.SurfaceComments, VR.UT, "Test Comments");
+
+    DicomConfig config = DicomConfig.newBuilder().setFilterProfile(
+        DicomConfig.TagFilterProfile.CHC_BASIC).build();
+
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
+    Attributes expected = new Attributes();
+    expected.setString(Tag.IdentifyingComments, VR.LT, "");
+    expected.setString(Tag.PatientName, VR.PN, "");
+    expected.setString(Tag.SurfaceComments, VR.UT, "Test Comments");
+
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+  }
 }
 
