@@ -51,7 +51,7 @@ public final class DicomRedactorTest {
   public TemporaryFolder folder = new TemporaryFolder();
 
   private void redactAndVerify(Attributes metadata, Attributes inData, Attributes expectedMetadata,
-      Attributes expectedData, DicomConfig config) throws Exception {
+      Attributes expectedData, DicomRedactor redactor) throws Exception {
     File inFile = folder.newFile("in.dcm");
     File outFile = folder.newFile("out.dcm");
     File expectedFile = folder.newFile("exp.dcm");
@@ -62,7 +62,6 @@ public final class DicomRedactorTest {
     InputStream is = new BufferedInputStream(new FileInputStream(inFile));
     OutputStream os = new BufferedOutputStream(new FileOutputStream(outFile));
 
-    DicomRedactor redactor = new DicomRedactor(config);
     redactor.redact(is, os);
     Assert.assertTrue(FileUtils.contentEquals(outFile, expectedFile));
   }
@@ -70,11 +69,18 @@ public final class DicomRedactorTest {
   private Attributes getTestMetadataHeader(String transferSyntaxUID) {
     Attributes metadata = new Attributes();
     metadata.setBytes(Tag.FileMetaInformationVersion, VR.OB, new byte[]{0x00, 0x01});
-    metadata.setString(Tag.MediaStorageSOPInstanceUID, VR.UI, "Test");
+    metadata.setString(Tag.MediaStorageSOPInstanceUID, VR.UI, "1.2.3");
     metadata.setString(Tag.MediaStorageSOPClassUID, VR.UI, "Test");
     metadata.setString(Tag.TransferSyntaxUID, VR.UI, transferSyntaxUID);
     metadata.setString(Tag.ImplementationClassUID, VR.UI, Implementation.getClassUID());
     metadata.setString(Tag.ImplementationVersionName, VR.SH, Implementation.getVersionName());
+    return metadata;
+  }
+
+  private Attributes getTestMetadataHeaderWithUIDReplaced(String transferSyntaxUID) {
+    Attributes metadata = getTestMetadataHeader(transferSyntaxUID);
+    metadata.setString(Tag.MediaStorageSOPInstanceUID, VR.UI,
+        "2.25.235153174557024093797895412215599142974");
     return metadata;
   }
 
@@ -101,6 +107,7 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setRemoveList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
     Attributes expected = new Attributes();
     expected.setString(Tag.IdentifyingComments, VR.LT, "Test String");
     expected.setString(Tag.PatientName, VR.PN, "");
@@ -109,7 +116,7 @@ public final class DicomRedactorTest {
     Sequence expectedItems = expected.newSequence(Tag.FailedSOPSequence, 1);
     expectedItems.add(expSeq);
 
-    redactAndVerify(metadata, dataset, metadata, expected, config);
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
   }
 
   @Test
@@ -128,6 +135,7 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setRemoveList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
     Attributes expected = new Attributes();
     expected.setString(Tag.IdentifyingComments, VR.LT, "Test String");
     expected.setString(Tag.PatientName, VR.PN, "");
@@ -136,7 +144,7 @@ public final class DicomRedactorTest {
     Sequence expectedItems = expected.newSequence(Tag.FailedSOPSequence, 1);
     expectedItems.add(expSeq);
 
-    redactAndVerify(metadata, dataset, metadata, expected, config);
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
   }
 
   @Test
@@ -153,10 +161,11 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setRemoveList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
     Attributes expected = new Attributes();
     Sequence expectedItems = expected.newSequence(Tag.FailedSOPSequence, 0);
 
-    redactAndVerify(metadata, dataset, metadata, expected, config);
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
   }
 
   @Test
@@ -173,7 +182,9 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setRemoveList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
-    redactAndVerify(metadata, dataset, metadata, dataset, config);
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
+
+    redactAndVerify(metadata, dataset, expectedMetadata, dataset, new DicomRedactor(config));
   }
 
   @Test
@@ -188,11 +199,11 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setRemoveList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
-    Attributes expectedMetadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
     Attributes expected = new Attributes();
     expected.setBytes(Tag.PixelData, VR.OB, new byte[]{});
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, config);
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
   }
 
   @Test
@@ -208,11 +219,11 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setRemoveList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
-    Attributes expectedMetadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
     Attributes expected = new Attributes();
     expected.setBytes(Tag.PixelData, VR.OB, new byte[]{});
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, config);
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
   }
 
   @Test
@@ -227,10 +238,12 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setRemoveList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
+    Attributes expectedMetadata =
+        getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRBigEndianRetired);
     Attributes expected = new Attributes();
     expected.setBytes(Tag.PixelData, VR.OB, new byte[]{});
 
-    redactAndVerify(metadata, dataset, metadata, expected, config);
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
   }
 
   @Test
@@ -249,12 +262,13 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setKeepList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
     Attributes expected = new Attributes();
     expected.setString(Tag.IdentifyingComments, VR.LT, "");
     expected.setString(Tag.PatientName, VR.PN, "Person^Name");
     Sequence expectedItems = expected.newSequence(Tag.FailedSOPSequence, 0);
 
-    redactAndVerify(metadata, dataset, metadata, expected, config);
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
   }
 
   @Test
@@ -271,11 +285,12 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setKeepList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
     Attributes expected = new Attributes();
     expected.setString(Tag.PatientName, VR.PN, "");
     Sequence expectedItems = expected.newSequence(Tag.FailedSOPSequence, 0);
 
-    redactAndVerify(metadata, dataset, metadata, expected, config);
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
   }
 
   @Test
@@ -289,10 +304,11 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setRemoveList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ImplicitVRLittleEndian);
     Attributes expected = new Attributes();
     expected.setString(Tag.PatientName, VR.PN, "");
 
-    redactAndVerify(metadata, dataset, metadata, expected, config);
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
   }
 
 
@@ -307,7 +323,7 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setRemoveList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
-    redactAndVerify(metadata, dataset, metadata, dataset, config);
+    redactAndVerify(metadata, dataset, metadata, dataset, new DicomRedactor(config));
   }
 
   @Test(expected = IllegalArgumentException.class)
@@ -318,7 +334,7 @@ public final class DicomRedactorTest {
 
     DicomConfig config = DicomConfig.newBuilder().build();
 
-    redactAndVerify(metadata, dataset, metadata, dataset, config);
+    redactAndVerify(metadata, dataset, metadata, dataset, new DicomRedactor(config));
   }
 
   @Test(expected = IOException.class)
@@ -363,6 +379,126 @@ public final class DicomRedactorTest {
 
     DicomRedactor redactor = new DicomRedactor(config);
     redactor.redact(is, os);
+  }
+
+  @Test
+  public void removelistReplaceUIDDefault() throws Exception {
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes dataset = new Attributes();
+    dataset.setString(Tag.SOPInstanceUID, VR.UI, "1.2.3");
+    dataset.setString(Tag.StudyInstanceUID, VR.UI, "1.2.4");
+    dataset.setString(Tag.SeriesInstanceUID, VR.UI, "1.2.5");
+
+    List<String> tags = new ArrayList<String>();
+    DicomConfig config = DicomConfig.newBuilder().setRemoveList(
+        DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
+
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
+    Attributes expected = new Attributes();
+    expected.setString(Tag.SOPInstanceUID, VR.UI, "2.25.235153174557024093797895412215599142974");
+    expected.setString(Tag.StudyInstanceUID, VR.UI, "2.25.11567562993222170604478667374799402574");
+    expected.setString(Tag.SeriesInstanceUID, VR.UI,
+        "2.25.291421206658433162738860295383136573243");
+
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+  }
+
+  @Test
+  public void removelistReplaceUIDOverride() throws Exception {
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes dataset = new Attributes();
+    dataset.setString(Tag.SOPInstanceUID, VR.UI, "1.2.3");
+    dataset.setString(Tag.StudyInstanceUID, VR.UI, "1.2.4");
+    dataset.setString(Tag.SeriesInstanceUID, VR.UI, "1.2.5");
+
+    List<String> tags = new ArrayList<String>();
+    tags.add("SOPInstanceUID");
+    tags.add("StudyInstanceUID");
+    tags.add("SeriesInstanceUID");
+    DicomConfig config = DicomConfig.newBuilder().setRemoveList(
+        DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
+
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
+    Attributes expected = new Attributes();
+    expected.setString(Tag.SOPInstanceUID, VR.UI, "2.25.235153174557024093797895412215599142974");
+    expected.setString(Tag.StudyInstanceUID, VR.UI, "2.25.11567562993222170604478667374799402574");
+    expected.setString(Tag.SeriesInstanceUID, VR.UI,
+         "2.25.291421206658433162738860295383136573243");
+
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+  }
+
+  @Test
+  public void keeplistReplaceUIDDefault() throws Exception {
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes dataset = new Attributes();
+    dataset.setString(Tag.SOPInstanceUID, VR.UI, "1.2.3");
+    dataset.setString(Tag.StudyInstanceUID, VR.UI, "1.2.4");
+    dataset.setString(Tag.SeriesInstanceUID, VR.UI, "1.2.5");
+
+    List<String> tags = new ArrayList<String>();
+    DicomConfig config = DicomConfig.newBuilder().setKeepList(
+        DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
+
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
+    Attributes expected = new Attributes();
+    expected.setString(Tag.SOPInstanceUID, VR.UI, "2.25.235153174557024093797895412215599142974");
+    expected.setString(Tag.StudyInstanceUID, VR.UI, "2.25.11567562993222170604478667374799402574");
+    expected.setString(Tag.SeriesInstanceUID, VR.UI,
+         "2.25.291421206658433162738860295383136573243");
+
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+  }
+
+  @Test
+  public void keeplistReplaceUIDOverride() throws Exception {
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes dataset = new Attributes();
+    dataset.setString(Tag.SOPInstanceUID, VR.UI, "1.2.3");
+    dataset.setString(Tag.StudyInstanceUID, VR.UI, "1.2.4");
+    dataset.setString(Tag.SeriesInstanceUID, VR.UI, "1.2.5");
+
+    List<String> tags = new ArrayList<String>();
+    tags.add("SOPInstanceUID");
+    tags.add("StudyInstanceUID");
+    tags.add("SeriesInstanceUID");
+    DicomConfig config = DicomConfig.newBuilder().setKeepList(
+        DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
+
+    Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
+    Attributes expected = new Attributes();
+    expected.setString(Tag.SOPInstanceUID, VR.UI, "2.25.235153174557024093797895412215599142974");
+    expected.setString(Tag.StudyInstanceUID, VR.UI, "2.25.11567562993222170604478667374799402574");
+    expected.setString(Tag.SeriesInstanceUID, VR.UI,
+         "2.25.291421206658433162738860295383136573243");
+
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+  }
+
+  @Test
+  public void removelistReplaceUIDWithCustomPrefix() throws Exception {
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes dataset = new Attributes();
+    dataset.setString(Tag.SOPInstanceUID, VR.UI, "1.2.3");
+    dataset.setString(Tag.StudyInstanceUID, VR.UI, "1.2.4");
+    dataset.setString(Tag.SeriesInstanceUID, VR.UI, "1.2.5");
+
+    List<String> tags = new ArrayList<String>();
+    DicomConfig config = DicomConfig.newBuilder().setRemoveList(
+        DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
+    String prefix = "1.2.3";
+
+    Attributes expectedMetadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    expectedMetadata.setString(Tag.MediaStorageSOPInstanceUID, VR.UI,
+        "1.2.3.235153174557024093797895412215599142974");
+    Attributes expected = new Attributes();
+    expected.setString(Tag.SOPInstanceUID, VR.UI, "1.2.3.235153174557024093797895412215599142974");
+    expected.setString(Tag.StudyInstanceUID, VR.UI, "1.2.3.11567562993222170604478667374799402574");
+    expected.setString(Tag.SeriesInstanceUID, VR.UI,
+         "1.2.3.291421206658433162738860295383136573243");
+
+    redactAndVerify(metadata, dataset, expectedMetadata, expected,
+        new DicomRedactor(config, prefix));
   }
 }
 
