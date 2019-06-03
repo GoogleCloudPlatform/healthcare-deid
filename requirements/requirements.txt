@@ -9,3 +9,9 @@ flask_sqlalchemy
 jsonschema
 pymysql
 six==1.10.0
+jinja2
+markupsafe
+click
+pyarrow
+attrs
+pyrsistent

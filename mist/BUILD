@@ -49,6 +49,8 @@ py_library(
     srcs = ["bigquery_to_gcs_lib.py"],
     deps = [
         requirement("apache_beam"),
+        requirement("pyarrow"),
+        requirement("numpy"),
         requirement("fastavro"),
         requirement("google-api-core"),
         requirement("google-apitools"),
@@ -75,6 +77,8 @@ py_library(
     srcs = ["gcs_to_bigquery_lib.py"],
     deps = [
         requirement("apache_beam"),
+        requirement("pyarrow"),
+        requirement("numpy"),
         requirement("fastavro"),
         requirement("google-api-core"),
         requirement("google-apitools"),

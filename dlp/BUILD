@@ -28,6 +28,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         requirement("apache_beam"),
+        requirement("pyarrow"),
+        requirement("numpy"),
         requirement("fastavro"),
         requirement("google-api-core"),
         requirement("google-apitools"),

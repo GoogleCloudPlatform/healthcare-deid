@@ -76,6 +76,8 @@ py_library(
     deps = [
         ":testutil",
         requirement("apache_beam"),
+        requirement("pyarrow"),
+        requirement("numpy"),
         requirement("fastavro"),
         requirement("google-api-core"),
         requirement("google-apitools"),
