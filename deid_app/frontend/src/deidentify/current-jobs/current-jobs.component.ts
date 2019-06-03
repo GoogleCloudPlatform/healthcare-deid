@@ -1,9 +1,9 @@
 import {Component, OnDestroy, OnInit} from '@angular/core';
-import {MatTableDataSource} from '@angular/material';
+import {MatTableDataSource} from '@angular/material/table';
 import {Subscription} from 'rxjs';
 
-import {DeidJob} from '../deid_job';
 import {DlpDemoService} from '../../services/dlp-demo.service';
+import {DeidJob} from '../deid_job';
 
 /**
  * Displays the deidentify jobs that the user have created and ran.

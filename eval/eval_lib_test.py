@@ -119,6 +119,21 @@ class EvalLibTest(unittest.TestCase):
     self.assertTrue(math.isnan(stats.recall))
     self.assertTrue(math.isnan(stats.f_score))
 
+  def testTokenizeSetWithRepeatedToken(self):
+    # Token 'st' appears twice in the finding.
+    findings = [
+        eval_lib.Finding('A', 0, 12, '123 st patrick st', 0,
+                         '123 st patrick street')
+    ]
+    tokenized = eval_lib.tokenize_set(findings)
+    expected_tokenized = set([
+        eval_lib.Finding('A', 0, 3, '123'),
+        eval_lib.Finding('A', 4, 6, 'st'),
+        eval_lib.Finding('A', 7, 14, 'patrick'),
+        eval_lib.Finding('A', 15, 17, 'st')
+    ])
+    self.assertEqual(expected_tokenized, tokenized)
+
   def testTokenizeSet(self):
     finding = eval_lib.Finding
     full_text = 'hi: two tokens and: three\tmore  tokens'

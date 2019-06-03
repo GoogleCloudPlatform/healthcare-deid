@@ -43,6 +43,7 @@ py_test(
 py_library(
     name = "run_pipeline_lib",
     srcs = ["run_pipeline_lib.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":eval_lib",
         ":results_py_pb2",
@@ -74,6 +75,7 @@ py_test(
 py_binary(
     name = "run_pipeline",
     srcs = ["run_pipeline.py"],
+    python_version = "PY3",
     deps = [
         ":run_pipeline_lib",
         requirement("google-cloud-storage"),

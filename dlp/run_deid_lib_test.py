@@ -64,11 +64,20 @@ def ordered(obj):
 
 DEID_TIMESTAMP = datetime.utcnow()
 
-EXPECTED_DEID_RESULT = [
-    {'note': 'note1 redacted', 'patient_id': '111', 'record_number': '1',
-     run_deid_lib.DLP_DEID_TIMESTAMP: DEID_TIMESTAMP},
-    {'note': 'note2 redacted', 'patient_id': '222', 'record_number': '2',
-     run_deid_lib.DLP_DEID_TIMESTAMP: DEID_TIMESTAMP}]
+TIMESTAMP_STRING = datetime.strftime(DEID_TIMESTAMP, '%Y-%m-%d %H:%M:%S')
+
+EXPECTED_DEID_RESULT = [{
+    'note': 'note1 redacted',
+    'patient_id': '111',
+    'record_number': '1',
+    run_deid_lib.DLP_DEID_TIMESTAMP: TIMESTAMP_STRING
+},
+                        {
+                            'note': 'note2 redacted',
+                            'patient_id': '222',
+                            'record_number': '2',
+                            run_deid_lib.DLP_DEID_TIMESTAMP: TIMESTAMP_STRING
+                        }]
 
 EXPECTED_MAE1 = """<?xml version="1.0" encoding="UTF-8" ?>
 <InspectPhiTask>
@@ -202,7 +211,7 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
-    rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum', 'timestamp']]
+    rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum', DEID_TIMESTAMP]]
     results_table = FakeBqResults(bq_schema(), rows)
     query_job.destination.fetch_data.return_value = results_table
     bq_client = Mock()
@@ -242,15 +251,20 @@ class RunDeidLibTest(unittest.TestCase):
         self.assertEqual(local_dtd.read(), contents)
 
     self.assertEqual(
-        beam_testutil.get_table('deid_tbl'),
-        [{'patient_id': '111', 'record_number': '1', 'note': 'deid_resp_val',
-          'field_transform_col': 'transformed!!',
-          run_deid_lib.DLP_DEID_TIMESTAMP: DEID_TIMESTAMP}])
+        beam_testutil.get_table('deid_tbl'), [{
+            'patient_id': '111',
+            'record_number': '1',
+            'note': 'deid_resp_val',
+            'field_transform_col': 'transformed!!',
+            run_deid_lib.DLP_DEID_TIMESTAMP: TIMESTAMP_STRING
+        }])
     self.assertEqual(
-        beam_testutil.get_table('findings_tbl'),
-        [{'patient_id': '111', 'record_number': '1',
-          'findings': json.dumps(findings),
-          run_deid_lib.DLP_FINDINGS_TIMESTAMP: DEID_TIMESTAMP}])
+        beam_testutil.get_table('findings_tbl'), [{
+            'patient_id': '111',
+            'record_number': '1',
+            'findings': json.dumps(findings),
+            run_deid_lib.DLP_FINDINGS_TIMESTAMP: TIMESTAMP_STRING
+        }])
 
   @patch('apiclient.discovery.build')
   @patch('apache_beam.io.textio.WriteToText')
@@ -272,16 +286,30 @@ class RunDeidLibTest(unittest.TestCase):
     deid_cfg_json = run_deid_lib.parse_config_file(deid_cfg)
     input_csv = os.path.join(TESTDATA_DIR, 'testdata/input.csv')
     run_deid_lib.run_pipeline(
-        None, None, None, None,
-        None, None, deid_cfg_json, 'InspectPhiTask', 'project',
-        testutil.FakeStorageClient, None, None, 'dlp', batch_size=1,
-        dtd_dir=None, input_csv=input_csv, output_csv='output-csv',
-        timestamp=str(DEID_TIMESTAMP), pipeline_args=None)
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        deid_cfg_json,
+        'InspectPhiTask',
+        'project',
+        testutil.FakeStorageClient,
+        None,
+        None,
+        'dlp',
+        batch_size=1,
+        dtd_dir=None,
+        input_csv=input_csv,
+        output_csv='output-csv',
+        timestamp=DEID_TIMESTAMP,
+        pipeline_args=None)
 
     fake_content.deidentify.assert_called_once()
     self.assertEqual(
         testutil.get_gcs_file('output-csv').strip(),
-        '222,1,deid_resp_val,{}'.format(DEID_TIMESTAMP))
+        '222,1,deid_resp_val,' + TIMESTAMP_STRING)
 
   @patch('apiclient.discovery.build')
   @patch('apache_beam.io.BigQuerySink')
@@ -326,7 +354,7 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
-    rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum', 'timestamp']]
+    rows = [['Boaty', 'McBoatface', 'note', 'id', 'recordnum', DEID_TIMESTAMP]]
     results_table = FakeBqResults(bq_schema(), rows)
     query_job.destination.fetch_data.return_value = results_table
     bq_client = Mock()
@@ -355,10 +383,13 @@ class RunDeidLibTest(unittest.TestCase):
     self.assertEqual(ordered(request_body), ordered(kwargs['body']))
 
     self.assertEqual(
-        beam_testutil.get_table('deid_tbl'),
-        [{'patient_id': '111', 'record_number': '1', 'note': 'deidtext',
-          'last_name': 'myname',
-          run_deid_lib.DLP_DEID_TIMESTAMP: DEID_TIMESTAMP}])
+        beam_testutil.get_table('deid_tbl'), [{
+            'patient_id': '111',
+            'record_number': '1',
+            'note': 'deidtext',
+            'last_name': 'myname',
+            run_deid_lib.DLP_DEID_TIMESTAMP: TIMESTAMP_STRING
+        }])
 
   # De-id two notes and batch them together so each of inspect() and deid() is
   # still only called once.
@@ -403,9 +434,10 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
-    rows = [['Boaty', 'McBoatface', 'text and PID and MORE PID', '111', '1',
-             'timestamp'],
-            ['Zephod', 'Beeblebrox', 'note2 text', '222', '2', 'timestamp']]
+    rows = [[
+        'Boaty', 'McBoatface', 'text and PID and MORE PID', '111', '1',
+        DEID_TIMESTAMP
+    ], ['Zephod', 'Beeblebrox', 'note2 text', '222', '2', DEID_TIMESTAMP]]
     results_table = FakeBqResults(bq_schema(), rows)
     query_job.destination.fetch_data.return_value = results_table
     bq_client = Mock()
@@ -488,7 +520,7 @@ class RunDeidLibTest(unittest.TestCase):
       deid_execute.call_count += 1
       if response == 'Exception':
         content = ('{"error": {"message": "Too many findings to de-identify. '
-                   'Retry with a smaller request."}}')
+                   'Retry with a smaller request."}}').encode('utf-8')
         raise errors.HttpError(httplib2.Response({'status': 400}), content)
       return response
     deid_execute.call_count = 0
@@ -499,9 +531,10 @@ class RunDeidLibTest(unittest.TestCase):
     mock_build_fn.return_value = fake_dlp
 
     query_job = Mock()
-    rows = [['Boaty', 'McBoatface', 'text and PID and MORE PID', '111', '1',
-             'timestamp'],
-            ['Zephod', 'Beeblebrox', 'note2 text', '222', '2', 'timestamp']]
+    rows = [[
+        'Boaty', 'McBoatface', 'text and PID and MORE PID', '111', '1',
+        DEID_TIMESTAMP
+    ], ['Zephod', 'Beeblebrox', 'note2 text', '222', '2', DEID_TIMESTAMP]]
     results_table = FakeBqResults(bq_schema(), rows)
     query_job.destination.fetch_data.return_value = results_table
     bq_client = Mock()

@@ -32,37 +32,13 @@ branch = "master",
     remote = "https://github.com/bazelbuild/bazel-skylib.git",
 )
 
-git_repository(
-    name = "io_bazel",
-    branch = "master",
-    remote = "https://github.com/bazelbuild/bazel.git",
-)
-
-bind(
-    name = "zlib",  # Required by @com_google_protobuf.
-    actual = "@io_bazel//third_party/zlib:zlib",
-)
-
-git_repository(
+http_archive(
     name = "com_google_protobuf",
-    branch = "master",
-    remote = "https://github.com/google/protobuf.git",
+    strip_prefix = "protobuf-master",
+    urls = ["https://github.com/protocolbuffers/protobuf/archive/master.zip"],
 )
 
-bind(
-    name = "protobuf",
-    actual = "@com_google_protobuf//:protobuf",
-)
-
-bind(
-    name = "protobuf_python",
-    actual = "@com_google_protobuf//:protobuf_python",
-)
-
-bind(
-    name = "protobuf_python_genproto",
-    actual = "@com_google_protobuf//:protobuf_python_genproto",
-)
+protobuf_deps()
 
 git_repository(
     name = "io_bazel_rules_python",

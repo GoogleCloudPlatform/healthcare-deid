@@ -1,5 +1,5 @@
 apache_beam
-google-apitools
+google-apitools==0.5.26  # Newer versions are incompatible with six 1.10.0.
 google-auth-httplib2
 google-cloud-storage
 fastavro
@@ -7,5 +7,5 @@ flask
 sqlalchemy
 flask_sqlalchemy
 jsonschema
-pymysql==0.8.1
+pymysql
 six==1.10.0

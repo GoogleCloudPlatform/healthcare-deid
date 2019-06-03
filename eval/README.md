@@ -8,7 +8,7 @@ run directly (i.e.`python dlp/xxx.py`) if $PYTHONPATH includes this package.
 ## Setup
 
 If you are planning to use this tool on real PHI, ensure your project and
-permissions follow [HIPPA
+permissions follow [HIPAA
 guidelines](https://cloud.google.com/security/compliance/hipaa/).
 
 ### Authentication
@@ -52,7 +52,7 @@ Storage client, and Python Apache Beam client installed. Note that as of
 `six` library, which requires a downgrade to 1.10.0 to fix.
 
 ```shell
-virtualenv env
+virtualenv -p python2 env
 source env/bin/activate
 pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-bigquery google-auth-httplib2 google-cloud-storage six==1.10.0
 ```

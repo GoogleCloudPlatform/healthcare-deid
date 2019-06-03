@@ -25,12 +25,13 @@ licenses(["notice"])  # Apache License 2.0
 py_library(
     name = "run_deid_lib",
     srcs = ["run_deid_lib.py"],
+    srcs_version = "PY2AND3",
     deps = [
         requirement("apache_beam"),
         requirement("fastavro"),
         requirement("google-api-core"),
         requirement("google-apitools"),
-        requirement("google-auth-httplib2"),
+        requirement("google-auth-httplib2"),  # buildcleaner: keep
         "//common:mae",
         "//common:unicodecsv",
     ],
@@ -40,7 +41,7 @@ py_test(
     name = "run_deid_lib_test",
     srcs = ["run_deid_lib_test.py"],
     data = [
-        "//dlp:sample_deid_config.json",
+        ":sample_deid_config.json",
         "//dlp/mae_testdata:sample.dtd",
         "//dlp/mae_testdata:sample.xml",
         "//dlp/testdata:batch_config.json",
@@ -53,18 +54,17 @@ py_test(
     ],
     deps = [
         ":run_deid_lib",
-        requirement("apache_beam"),
-        requirement("fastavro"),
-        requirement("google-api-core"),
-        requirement("google-apitools"),
         "//common:beam_testutil",
         "//common:testutil",
+        requirement("httplib2"),
     ],
 )
 
 py_binary(
     name = "run_deid",
     srcs = ["run_deid.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
     deps = [
         ":run_deid_lib",
         requirement("google-cloud-storage"),
@@ -74,15 +74,21 @@ py_binary(
 py_binary(
     name = "redact_image",
     srcs = ["redact_image.py"],
-    default_python_version = "PY3",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
-    deps = [":run_deid_lib"],
+    deps = [
+        ":run_deid_lib",
+        requirement("google-cloud-core"),
+    ],
 )
 
 py_binary(
     name = "inspect_dicom",
     srcs = ["inspect_dicom.py"],
-    default_python_version = "PY3",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
-    deps = [":run_deid_lib"],
+    deps = [
+        ":run_deid_lib",
+        requirement("google-cloud-core"),
+    ],
 )

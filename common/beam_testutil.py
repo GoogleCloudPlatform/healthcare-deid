@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 
 import collections
+import sys
 
 import apache_beam as beam
 from apache_beam.coders.coders import ToStringCoder
@@ -60,8 +61,10 @@ class DummyWriteTransform(beam.PTransform):
       pass
 
     def process(self, element):
-      testutil.append_to_gcs_file(self.filename,
-                                  self.coder.encode(element) + '\n')
+      e = element
+      if sys.version < '3':
+        e = self.coder.encode(element)
+      testutil.append_to_gcs_file(self.filename, e + '\n')
 
     def finish_bundle(self):
       pass

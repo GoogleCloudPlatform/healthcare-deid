@@ -33,6 +33,7 @@ py_library(
 py_test(
     name = "run_docker_test",
     srcs = ["run_docker_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":gcsutil",
@@ -49,6 +50,7 @@ py_library(
 py_test(
     name = "mae_test",
     srcs = ["mae_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":mae",

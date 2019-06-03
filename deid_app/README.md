@@ -92,13 +92,21 @@ pip install --upgrade apache_beam[gcp] google-api-python-client google-cloud-big
 
 After the database proxy has been successfully created, add the user and
 password information of the CloudSQL instance into the environment variables.
-The information can be found in the CloudSQL instance's main page.
+The information can be found in the CloudSQL instance's [main page](https://console.cloud.google.com/sql/instances),
+specifically, assuming your instance name is "deidapp":
+
+* CLOUDSQL_USER: https://console.cloud.google.com/sql/instances/deidapp/users
+* CLOUDSQL_PASSWORD: Not shown in the UI, but you can reset it on the "users"
+  page.
+* CLOUDSQL_DATABASE: https://console.cloud.google.com/sql/instances/deidapp/databases
+* CLOUDSQL_CONNECTION_NAME: "instance connection name" on the instance page:
+  https://console.cloud.google.com/sql/instances/deidapp
 
 ```shell
-export CLOUDSQL_USER="<enter user>"
-export CLOUDSQL_PASSWORD="<enter password>"
-export CLOUDSQL_DATABASE="<enter database>"
-export CLOUDSQL_CONNECTION_NAME="<enter connection name>"
+export CLOUDSQL_USER="<user>"
+export CLOUDSQL_PASSWORD="<password>"
+export CLOUDSQL_DATABASE="<database>"
+export CLOUDSQL_CONNECTION_NAME="<connection_name>"
 ```
 
 To create the necessary tables inside CloudSQL, run this command:

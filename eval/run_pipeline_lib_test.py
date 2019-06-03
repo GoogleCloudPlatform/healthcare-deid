@@ -44,7 +44,7 @@ tag_template = '<{0} id="{0}0" spans="{1}~{2}" />'
 
 
 def normalize_dict_floats(d):
-  for k, v in d.iteritems():
+  for k, v in d.items():
     if isinstance(v, float):
       d[k] = round(v, 6)
   return d
@@ -80,7 +80,7 @@ def normalize_floats(pb):
       # This is a map; only recurse if the values have a message type.
       if (desc.message_type.fields_by_number[2].type ==
           descriptor.FieldDescriptor.TYPE_MESSAGE):
-        for v in values.itervalues():
+        for v in values.values():
           normalize_floats(v)
     elif desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE:
       for v in values:

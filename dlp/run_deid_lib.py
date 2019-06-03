@@ -26,11 +26,11 @@ from __future__ import absolute_import
 import collections
 import copy
 from datetime import datetime
+import io
 import json
 import logging
 import os
 import posixpath
-import StringIO
 import time
 import uuid
 
@@ -41,6 +41,11 @@ from apiclient import errors
 from common import mae
 from common import unicodecsv
 import httplib2
+
+try:
+  import StringIO  # pylint: disable=g-import-not-at-top
+except ImportError:
+  pass
 
 
 CUSTOM_INFO_TYPES = 'customInfoTypes'
@@ -60,7 +65,7 @@ def _get_index(column_name, headers):
 
 def request_with_retry(fn, num_retries=5):
   """Makes a service request; and retries if needed."""
-  for attempt in xrange(num_retries):
+  for attempt in range(num_retries):
     try:
       return fn()
     except errors.HttpError as error:
@@ -130,6 +135,7 @@ def get_deid_text(deid_response, pass_through_columns, target_columns,
       val = table['rows'][0]['values'][i][col['type']]
     response[col['name']] = val
 
+  timestamp = datetime.strftime(timestamp, '%Y-%m-%d %H:%M:%S')
   response[DLP_DEID_TIMESTAMP] = timestamp
   return response
 
@@ -187,7 +193,7 @@ def _rebatch_deid(rows, project, deid_config, inspect_config,
                   pass_through_columns, target_columns, per_row_types,
                   dlp_api_name):
   """Call deid() twice with half the list each time and merge the result."""
-  half_size = len(rows) / 2
+  half_size = int(len(rows) / 2)
   ret_a = deid(rows[:half_size], project, deid_config,
                inspect_config, pass_through_columns, target_columns,
                per_row_types, dlp_api_name)
@@ -284,7 +290,7 @@ def deid(rows, project, deid_config, inspect_config, pass_through_columns,
 def _rebatch_inspect(rows, project, inspect_config, pass_through_columns,
                      target_columns, per_row_types, dlp_api_name):
   """Call inspect() twice with half the list each time and merge the result."""
-  half_size = len(rows) / 2
+  half_size = int(len(rows) / 2)
   ret_a = inspect(rows[:half_size], project, inspect_config,
                   pass_through_columns, target_columns, per_row_types,
                   dlp_api_name)
@@ -393,7 +399,8 @@ def format_findings(inspect_result, pass_through_columns, timestamp):
   ret = {'findings': json.dumps(inspect_result['result'])}
   for col in pass_through_columns:
     ret[col['name']] = inspect_result[col['name']]
-  ret[DLP_FINDINGS_TIMESTAMP] = timestamp
+  ret[DLP_FINDINGS_TIMESTAMP] = datetime.strftime(timestamp,
+                                                  '%Y-%m-%d %H:%M:%S')
   return ret
 
 
@@ -692,7 +699,7 @@ def _load_per_dataset_types(per_dataset_cfg, input_query, input_table,
       raise Exception('No results for query: "{0}"'.format(query_job.query))
 
     # Generate custom info types based on the results.
-    for info_type_name, words in type_to_words.iteritems():
+    for info_type_name, words in type_to_words.items():
       custom_info_types.append({
           'infoType': {'name': info_type_name},
           'dictionary': {'wordList': {'words': list(words)}}
@@ -720,7 +727,8 @@ def _one_exists(objs):
 
 def _convert_old_row(row, field_indexes):
   new_row = {}
-  for field_name, index in sorted(field_indexes.items(), key=lambda x: x[1]):
+  for field_name, index in sorted(
+      list(field_indexes.items()), key=lambda x: x[1]):
     new_row[field_name] = row[index]
   return new_row
 
@@ -757,7 +765,11 @@ def read_csv(p, csv_filename):
 
 
 def _to_line(rowmap, headers):
-  stringio = StringIO.StringIO()
+  stringio = None
+  try:
+    stringio = StringIO.StringIO()
+  except NameError:
+    stringio = io.StringIO()
   writer = unicodecsv.DictWriter(stringio, headers)
   writer.writerow(rowmap)
   return stringio.getvalue()
@@ -870,7 +882,7 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
     reads = read_csv(p, input_csv)
 
   if not timestamp:
-    timestamp = str(datetime.utcnow())
+    timestamp = datetime.utcnow()
 
   inspect_data = None
   if findings_table or mae_dir or mae_table:
@@ -936,7 +948,11 @@ def run_pipeline(input_query, input_table, deid_table, findings_table,
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)))
 
   if output_csv:
-    stringio = StringIO.StringIO()
+    stringio = None
+    try:
+      stringio = StringIO.StringIO()
+    except NameError:
+      stringio = io.StringIO()
     headers = [c['name'] for c in (pass_through_columns + target_columns +
                                    [{'name': DLP_DEID_TIMESTAMP,
                                      'type': 'timestamp'}])]

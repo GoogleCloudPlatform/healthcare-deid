@@ -1,6 +1,6 @@
 import {Component, OnDestroy, OnInit} from '@angular/core';
 import {FormControl, FormGroup} from '@angular/forms';
-import {MatTableDataSource} from '@angular/material';
+import {MatTableDataSource} from '@angular/material/table';
 import {combineLatest, Observable, Subscription} from 'rxjs';
 import {filter, map} from 'rxjs/operators';
 import {startWith, switchMap} from 'rxjs/operators';

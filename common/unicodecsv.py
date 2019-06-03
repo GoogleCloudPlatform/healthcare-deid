@@ -17,29 +17,40 @@
 from __future__ import absolute_import
 
 import codecs
-import cStringIO
 import csv
+import io
+import sys
+try:
+  import cStringIO  # pylint: disable=g-import-not-at-top
+except ImportError:
+  pass
 
 
 class UTF8Recoder(object):
-  """
-  Iterator that reads an encoded stream and reencodes the input to UTF-8.
-  """
+  """Iterator that reads an encoded stream and reencodes the input to UTF-8."""
 
   def __init__(self, f, encoding):
-    self.reader = codecs.getreader(encoding)(f)
+    if sys.version > '3':
+      self.reader = f
+    else:
+      self.reader = codecs.getreader(encoding)(f)
 
   def __iter__(self):
     return self
 
+  def __next__(self):
+    return self.next()
+
   def next(self):
-    return self.reader.next().encode('utf-8')
+    if sys.version > '3':
+      return next(self.reader)
+    return next(self.reader).encode('utf-8')
 
 
 class UnicodeReader(object):
-  """
-  A CSV reader which will iterate over lines in the CSV file 'f',
-  which is encoded in the given encoding.
+  """A Unicode CSV reader.
+
+  Iterates over lines in the CSV file, which is encoded in the given encoding.
   """
 
   def __init__(self, f, dialect=csv.excel, encoding='utf-8', **kwds):
@@ -47,29 +58,40 @@ class UnicodeReader(object):
     self.reader = csv.reader(f, dialect=dialect, **kwds)
 
   def next(self):
-    row = self.reader.next()
+    row = next(self.reader)
+    if sys.version > '3':
+      return row
     return [unicode(s, 'utf-8') for s in row]
+
+  def __next__(self):
+    return self.next()
 
   def __iter__(self):
     return self
 
 
 class UnicodeWriter(object):
-  """
-  A CSV writer which will write rows to CSV file 'f',
-  which is encoded in the given encoding
-  """
+  """A Unicode CSV writer."""
 
   def __init__(self, f, dialect=csv.excel, encoding='utf-8', **kwds):
-    self.queue = cStringIO.StringIO()
+    try:
+      self.queue = cStringIO.StringIO()
+    except NameError:
+      self.queue = io.StringIO()
     self.writer = csv.writer(self.queue, dialect=dialect, **kwds)
     self.stream = f
     self.encoder = codecs.getincrementalencoder(encoding)()
 
   def writerow(self, row):
-    self.writer.writerow([s.encode('utf-8') for s in row])
-    data = self.queue.getvalue().decode('utf-8')
-    data = self.encoder.encode(data)
+    """Writes a row."""
+    if sys.version < '3':
+      self.writer.writerow([s.encode('utf-8') for s in row])
+    else:
+      self.writer.writerow(row)
+    data = self.queue.getvalue()
+    if sys.version < '3':
+      data = data.decode('utf-8')
+      data = self.encoder.encode(data)
     self.stream.write(data)
     self.queue.truncate(0)
 
@@ -79,12 +101,14 @@ class UnicodeWriter(object):
 
 
 class DictWriter(csv.DictWriter):
-  """
-  A CSV DictWriter that supports unicode.
-  """
+  """A CSV DictWriter that supports unicode."""
 
   def __init__(self, f, fieldnames, restval='', extrasaction='raise',
                dialect='excel', encoding='utf-8', **kwds):
+    if sys.version > '3':
+      csv.DictWriter.__init__(self, f, fieldnames, restval, extrasaction,
+                              dialect, **kwds)
+      return
     self.encoding = encoding
     csv.DictWriter.__init__(self, f, fieldnames, restval,
                             extrasaction, dialect, **kwds)
@@ -93,4 +117,3 @@ class DictWriter(csv.DictWriter):
   def writerheader(self):
     header = dict(zip(self.fieldnames, self.fieldnames))
     self.writerow(header)
-

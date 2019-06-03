@@ -25,7 +25,7 @@ licenses(["notice"])  # Apache License 2.0
 py_binary(
     name = "upload_files_to_bq",
     srcs = ["upload_files_to_bq.py"],
-    default_python_version = "PY3",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         requirement("apache_beam"),
@@ -40,7 +40,7 @@ py_binary(
 py_binary(
     name = "remove_invalid_characters",
     srcs = ["remove_invalid_characters.py"],
-    default_python_version = "PY3",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         "//common:mae",
@@ -50,9 +50,11 @@ py_binary(
 py_binary(
     name = "bq_to_xml",
     srcs = ["bq_to_xml.py"],
+    python_version = "PY2",
 )
 
 py_binary(
     name = "txt_to_xml",
     srcs = ["txt_to_xml.py"],
+    python_version = "PY2",
 )

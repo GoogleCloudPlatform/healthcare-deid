@@ -39,9 +39,11 @@ from deid_app.backend import model
 from dlp import run_deid_lib
 from eval import run_pipeline_lib as eval_lib
 import jsonschema
-from google.api_core import exceptions
+
 from google.cloud import bigquery
 from google.cloud import storage
+from google.cloud.exceptions import exceptions
+
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -271,7 +273,7 @@ def get_bq_rows(query):
   query_job = bq_client.query(query)
 
   res = query_job.result()  # blocks until query is done.
-  return [dict(row.items()) for row in res]
+  return [dict(list(row.items())) for row in res]
 
 
 def verify_bq_table(dataset_id, table_id, expected_schema):
@@ -642,11 +644,11 @@ def deidentify():
 
   deid_job = model.create(model.DeidJobTable, job_data)
   errors = run_deid_lib.run_pipeline(
-      input_query, input_table, deid_table, findings_table,
-      mae_dir, mae_table, deid_config_json, mae_task_name,
-      app.config['PROJECT_ID'], storage.Client, bq_client,
-      bigquery.job.QueryJobConfig, app.config['DLP_API_NAME'], batch_size,
-      dtd_dir, input_csv, output_csv, str(deid_job.timestamp), pipeline_args)
+      input_query, input_table, deid_table, findings_table, mae_dir, mae_table,
+      deid_config_json, mae_task_name, app.config['PROJECT_ID'], storage.Client,
+      bq_client, bigquery.job.QueryJobConfig, app.config['DLP_API_NAME'],
+      batch_size, dtd_dir, input_csv, output_csv, deid_job.timestamp,
+      pipeline_args)
 
   if errors:
     deid_job.update(status=400, log_trace=errors)
@@ -724,11 +726,12 @@ def evaluate():
   pipeline_args = []
 
   eval_job = model.create(model.EvalJobTable, job_data)
-  errors = eval_lib.run_pipeline(
-      mae_input_pattern, mae_golden_dir, results_dir, mae_input_query,
-      mae_golden_table, write_per_note_stats_to_gcs, results_table,
-      per_note_results_table, debug_output_table, types_to_ignore,
-      str(eval_job.timestamp), pipeline_args)
+  errors = eval_lib.run_pipeline(mae_input_pattern, mae_golden_dir, results_dir,
+                                 mae_input_query, mae_golden_table,
+                                 write_per_note_stats_to_gcs, results_table,
+                                 per_note_results_table, debug_output_table,
+                                 types_to_ignore, eval_job.timestamp,
+                                 pipeline_args)
 
   if errors:
     eval_job.update(status=400, log_trace=errors)
@@ -772,17 +775,19 @@ def get_eval_stats(job_id):
 
   # Change the key format from snake_case into camelCase and remove any keys
   # with None values
-  result = [dict((k, v) for (k, v) in
-                 {
-                     'infoType': stat.get('info_type'),
-                     'recall': stat.get('recall'),
-                     'precision': stat.get('precision'),
-                     'fScore': stat.get('f_score'),
-                     'truePositives': stat.get('true_positives'),
-                     'falsePositives': stat.get('false_positives'),
-                     'falseNegatives': stat.get('false_negatives'),
-                     'timestamp': stat.get('timestamp'),
-                 }.iteritems() if v is not None) for stat in stats_rows]
+  result = [
+      dict(  # pylint: disable=g-complex-comprehension
+          (k, v) for (k, v) in {
+              'infoType': stat.get('info_type'),
+              'recall': stat.get('recall'),
+              'precision': stat.get('precision'),
+              'fScore': stat.get('f_score'),
+              'truePositives': stat.get('true_positives'),
+              'falsePositives': stat.get('false_positives'),
+              'falseNegatives': stat.get('false_negatives'),
+              'timestamp': stat.get('timestamp'),
+          }.items() if v is not None) for stat in stats_rows
+  ]
   return flask.jsonify(stats=result), 200
 
 
