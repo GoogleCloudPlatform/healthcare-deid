@@ -14,5 +14,26 @@
  * limitations under the License.
  */
 
-rootProject.name = 'redactor'
-include 'lib', 'examples:tag_remover'
+plugins {
+    id 'java'
+    id 'application'
+}
+
+buildDir = "/tmp/gradle_build/redactor/examples"
+
+dependencies {
+  implementation project(':lib')
+  implementation 'commons-cli:commons-cli:1.4'
+
+  testImplementation 'junit:junit:4.12'
+  testImplementation 'com.google.truth:truth:0.39'
+  testImplementation 'commons-io:commons-io:2.6'
+}
+
+mainClassName = 'com.google.cloud.healthcare.deid.remover.TagRemover'
+
+jar {
+  manifest {
+    attributes 'Main-Class': mainClassName
+  }
+}
