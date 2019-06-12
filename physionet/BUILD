@@ -91,7 +91,7 @@ py_library(
     srcs = ["run_deid_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
-        requirement("google-auth-httplib2"),
+        requirement("google-auth-httplib2"),  # fixdeps: keep
         "//common:run_docker",
     ],
 )
@@ -110,8 +110,6 @@ py_binary(
 py_test(
     name = "run_deid_lib_test",
     srcs = ["run_deid_lib_test.py"],
-    # Flaky after cl/212996664
-    flaky = 1,
     srcs_version = "PY2AND3",
     deps = [":run_deid_lib"],
 )

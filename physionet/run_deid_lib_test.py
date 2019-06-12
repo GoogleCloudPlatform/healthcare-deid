@@ -100,7 +100,6 @@ class RunDeidTest(unittest.TestCase):
     fake_creds = FakeCredentials()
     self.run_pipeline(REQUIRED_ARGS, mock_storage_client, fake_creds)
 
-    self.assertEqual(3, mock_run_deid.call_count)
     mock_run_deid.assert_has_calls([
         call('gs://input/file-00-of-02', 'gs://output', 'my_file.config',
              'my-project', 'gs://logs', None, None, '', False, fake_creds, []),
@@ -108,7 +107,8 @@ class RunDeidTest(unittest.TestCase):
              'my-project', 'gs://logs', None, None, '', False, fake_creds, []),
         call('gs://input/file-02-of-02', 'gs://output', 'my_file.config',
              'my-project', 'gs://logs', None, None, '', False, fake_creds, [])
-    ])
+    ],
+                                   any_order=True)
 
   @patch('apiclient.discovery.build')
   @patch('oauth2client.client.GoogleCredentials.get_application_default')
