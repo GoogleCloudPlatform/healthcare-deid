@@ -1,6 +1,6 @@
 # DICOM Redactor Library
 
-The DICOM Redactor Library is a Java library designed to redact sensitive data contained in DICOM tags.
+The DICOM Redactor Library is a Java library designed to redact sensitive data contained in DICOM tags. This is an offline library which does not communicate with Google Cloud.
 
 ## Getting Started
 
