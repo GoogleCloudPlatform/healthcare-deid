@@ -39,7 +39,7 @@ export class RunDeidentifyComponent implements OnInit, OnDestroy {
   readonly dlpParameters = DlpParameters;
   private readonly subscriptions = new Subscription();
 
-  @ViewChild('submitComponent') submitComp;
+  @ViewChild('submitComponent', {static: true}) submitComp;
   readonly submitPlaceholder = 'Submit';
 
   inputOptions: DisplayOption[] = [

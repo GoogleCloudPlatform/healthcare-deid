@@ -21,7 +21,7 @@ import {DlpDemoService} from '../../services/dlp-demo.service';
 export class CsvUploadComponent implements OnInit, OnDestroy {
   private readonly subscriptions = new Subscription();
 
-  @ViewChild('submitComponent') submitComp;
+  @ViewChild('submitComponent', {static: true}) submitComp;
   readonly submitPlaceholder = 'Upload';
 
   csvForm = new FormGroup({
