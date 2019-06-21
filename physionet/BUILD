@@ -39,6 +39,7 @@ py_binary(
 py_library(
     name = "bigquery_to_gcs_lib",
     srcs = ["bigquery_to_gcs_lib.py"],
+    srcs_version = "PY2AND3",
     deps = [
         requirement("apache_beam"),
         requirement("pyarrow"),
@@ -59,7 +60,6 @@ py_binary(
 py_test(
     name = "bigquery_to_gcs_lib_test",
     srcs = ["bigquery_to_gcs_lib_test.py"],
-    python_version = "PY2",
     deps = [":bigquery_to_gcs_lib"],
 )
 
@@ -67,6 +67,7 @@ py_test(
 py_library(
     name = "gcs_to_bigquery_lib",
     srcs = ["gcs_to_bigquery_lib.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":files_to_physionet_records",
         requirement("apache_beam"),
@@ -99,8 +100,7 @@ py_library(
 py_binary(
     name = "run_deid",
     srcs = ["run_deid.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
+    python_version = "PY2",
     deps = [
         ":run_deid_lib",
         requirement("google-cloud-storage"),
@@ -118,6 +118,7 @@ py_test(
 py_library(
     name = "physionet_to_mae_lib",
     srcs = ["physionet_to_mae_lib.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":files_to_physionet_records",
         requirement("apache_beam"),
@@ -135,7 +136,6 @@ py_library(
 py_test(
     name = "physionet_to_mae_lib_test",
     srcs = ["physionet_to_mae_lib_test.py"],
-    python_version = "PY2",
     deps = [
         ":physionet_to_mae_lib",
         "//common:testutil",
@@ -145,7 +145,7 @@ py_test(
 py_binary(
     name = "physionet_to_mae",
     srcs = ["physionet_to_mae.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         ":physionet_to_mae_lib",
     ],
@@ -155,6 +155,7 @@ py_binary(
 py_library(
     name = "files_to_physionet_records",
     srcs = ["files_to_physionet_records.py"],
+    srcs_version = "PY2AND3",
     deps = [
         requirement("apache_beam"),
         requirement("pyarrow"),
@@ -168,6 +169,5 @@ py_library(
 py_test(
     name = "files_to_physionet_records_test",
     srcs = ["files_to_physionet_records_test.py"],
-    python_version = "PY2",
     deps = [":files_to_physionet_records"],
 )

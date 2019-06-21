@@ -25,6 +25,8 @@ from apache_beam.metrics import Metrics
 
 def parse_physionet_record(text):
   """Parse the PhysioNet text and get patient_id, record_number, and note."""
+  if not isinstance(text, str):
+    text = text.decode('utf-8')
   # The format is described at:
   # http://physionet.org/physiotools/deid/doc/DeidUserManual.pdf
   sep = r'\|\|\|\|'
@@ -68,6 +70,8 @@ def _finding(start, end):
 
 def map_phi_to_findings(file_path):
   """Separate full file contents into individual records."""
+  if not isinstance(file_path, str):
+    file_path = file_path.decode('utf-8')
   # Get the original text for each note so we can include it with the findings.
   notes = {}
   for record in map_file_to_records(file_path + '.text'):
@@ -80,6 +84,8 @@ def map_phi_to_findings(file_path):
   start_pattern = r'Patient (?P<patient>\d+)\tNote (?P<record>\d+)'
   finding_pattern = r'\d+\t(?P<start>\d+)\t(?P<end>\d+)'
   for line in filesystems.FileSystems.open(file_path + '.phi'):
+    if not isinstance(line, str):
+      line = line.decode('utf-8')
     line = line.strip()
     if not line:
       continue
@@ -110,6 +116,8 @@ def map_file_to_records(file_path):
   reader = filesystems.FileSystems.open(file_path)
   buf = ''
   for line in reader:
+    if not isinstance(line, str):
+      line = line.decode('utf-8')
     buf += line
     if '||||END_OF_RECORD' in line:
       record_counter.inc()
