@@ -20,6 +20,10 @@ plugins {
     id 'maven'
 }
 
+group = "com.google.cloud.healthcare.deid"
+archivesBaseName = "redactor"
+version = "0.1.0"
+
 buildDir = "/tmp/gradle_build/redactor"
 
 dependencies {
