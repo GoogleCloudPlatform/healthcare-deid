@@ -73,7 +73,7 @@ public final class DicomRedactorTest {
 
   private IDicomRedactor createDicomRedactor(DicomConfig config, String prefix) throws Exception {
     try {
-      if(prefix != null) {
+      if (prefix != null) {
         return (IDicomRedactor) implementationClass.getConstructor(DicomConfig.class, String.class)
             .newInstance(config, prefix);
       } else {
@@ -89,7 +89,6 @@ public final class DicomRedactorTest {
       }
     }
   }
-
 
   private void redactAndVerify(Attributes metadata, Attributes inData, Attributes expectedMetadata,
       Attributes expectedData, IDicomRedactor redactor) throws Exception {
