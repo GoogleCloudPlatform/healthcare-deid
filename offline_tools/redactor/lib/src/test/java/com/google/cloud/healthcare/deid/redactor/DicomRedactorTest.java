@@ -25,7 +25,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.dcm4che3.data.Attributes;
@@ -42,16 +45,54 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameters;
 
-/** Test basic DICOM tag redaction. */
-@RunWith(JUnit4.class)
+/**
+ * Test basic DICOM tag redaction.
+ */
+@RunWith(Parameterized.class)
 public final class DicomRedactorTest {
+
   @Rule
   public TemporaryFolder folder = new TemporaryFolder();
+  private Class implementationClass;
+
+  @Parameters
+  public static Collection getImplementationClasses() {
+    return Arrays.asList(DicomRedactor.class, StreamDicomRedactor.class);
+  }
+
+  public DicomRedactorTest(Class implementationClass) {
+    this.implementationClass = implementationClass;
+  }
+
+  private IDicomRedactor createDicomRedactor(DicomConfig config) throws Exception {
+    return createDicomRedactor(config, null);
+  }
+
+  private IDicomRedactor createDicomRedactor(DicomConfig config, String prefix) throws Exception {
+    try {
+      if(prefix != null) {
+        return (IDicomRedactor) implementationClass.getConstructor(DicomConfig.class, String.class)
+            .newInstance(config, prefix);
+      } else {
+        return (IDicomRedactor) implementationClass.getConstructor(DicomConfig.class)
+            .newInstance(config);
+      }
+    } catch (ReflectiveOperationException e) {
+      // to test for underlying exceptions instead of reflection stuff
+      if (e.getCause() instanceof Exception) {
+        throw (Exception) e.getCause();
+      } else {
+        throw e;
+      }
+    }
+  }
+
 
   private void redactAndVerify(Attributes metadata, Attributes inData, Attributes expectedMetadata,
-      Attributes expectedData, DicomRedactor redactor) throws Exception {
+      Attributes expectedData, IDicomRedactor redactor) throws Exception {
     File inFile = folder.newFile("in.dcm");
     File outFile = folder.newFile("out.dcm");
     File expectedFile = folder.newFile("exp.dcm");
@@ -116,7 +157,7 @@ public final class DicomRedactorTest {
     Sequence expectedItems = expected.newSequence(Tag.FailedSOPSequence, 1);
     expectedItems.add(expSeq);
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -144,7 +185,7 @@ public final class DicomRedactorTest {
     Sequence expectedItems = expected.newSequence(Tag.FailedSOPSequence, 1);
     expectedItems.add(expSeq);
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -165,12 +206,12 @@ public final class DicomRedactorTest {
     Attributes expected = new Attributes();
     Sequence expectedItems = expected.newSequence(Tag.FailedSOPSequence, 0);
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
   public void redactRemoveListEmpty() throws Exception {
-     Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
     Attributes dataset = new Attributes();
     dataset.setString(Tag.PatientName, VR.PN, "Person^Name");
     Attributes seq = new Attributes();
@@ -184,7 +225,7 @@ public final class DicomRedactorTest {
 
     Attributes expectedMetadata = getTestMetadataHeaderWithUIDReplaced(UID.ExplicitVRLittleEndian);
 
-    redactAndVerify(metadata, dataset, expectedMetadata, dataset, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, dataset, createDicomRedactor(config));
   }
 
   @Test
@@ -203,7 +244,7 @@ public final class DicomRedactorTest {
     Attributes expected = new Attributes();
     expected.setBytes(Tag.PixelData, VR.OB, new byte[]{});
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -223,7 +264,7 @@ public final class DicomRedactorTest {
     Attributes expected = new Attributes();
     expected.setBytes(Tag.PixelData, VR.OB, new byte[]{});
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -243,7 +284,7 @@ public final class DicomRedactorTest {
     Attributes expected = new Attributes();
     expected.setBytes(Tag.PixelData, VR.OB, new byte[]{});
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -268,7 +309,7 @@ public final class DicomRedactorTest {
     expected.setString(Tag.PatientName, VR.PN, "Person^Name");
     Sequence expectedItems = expected.newSequence(Tag.FailedSOPSequence, 0);
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -290,7 +331,7 @@ public final class DicomRedactorTest {
     expected.setString(Tag.PatientName, VR.PN, "");
     Sequence expectedItems = expected.newSequence(Tag.FailedSOPSequence, 0);
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -308,13 +349,13 @@ public final class DicomRedactorTest {
     Attributes expected = new Attributes();
     expected.setString(Tag.PatientName, VR.PN, "");
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
 
   @Test(expected = IllegalArgumentException.class)
   public void invalidTag() throws Exception {
-     Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
     Attributes dataset = new Attributes();
     dataset.setString(Tag.PatientName, VR.PN, "Person^Name");
 
@@ -323,23 +364,23 @@ public final class DicomRedactorTest {
     DicomConfig config = DicomConfig.newBuilder().setRemoveList(
         DicomConfig.TagFilterList.newBuilder().addAllTags(tags)).build();
 
-    redactAndVerify(metadata, dataset, metadata, dataset, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, metadata, dataset, createDicomRedactor(config));
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void emptyConfig() throws Exception {
-     Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
     Attributes dataset = new Attributes();
     dataset.setString(Tag.PatientName, VR.PN, "Person^Name");
 
     DicomConfig config = DicomConfig.newBuilder().build();
 
-    redactAndVerify(metadata, dataset, metadata, dataset, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, metadata, dataset, createDicomRedactor(config));
   }
 
   @Test(expected = IOException.class)
   public void failRead() throws Exception {
-     Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
     Attributes dataset = new Attributes();
     dataset.setString(Tag.PatientName, VR.PN, "Person^Name");
 
@@ -355,13 +396,13 @@ public final class DicomRedactorTest {
     is.close();
     OutputStream os = new BufferedOutputStream(new FileOutputStream(outFile));
 
-    DicomRedactor redactor = new DicomRedactor(config);
+    IDicomRedactor redactor = createDicomRedactor(config);
     redactor.redact(is, os);
   }
 
   @Test(expected = IOException.class)
   public void failWrite() throws Exception {
-     Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
+    Attributes metadata = getTestMetadataHeader(UID.ExplicitVRLittleEndian);
     Attributes dataset = new Attributes();
     dataset.setString(Tag.PatientName, VR.PN, "Person^Name");
 
@@ -377,7 +418,7 @@ public final class DicomRedactorTest {
     OutputStream os = new BufferedOutputStream(new FileOutputStream(outFile));
     os.close();
 
-    DicomRedactor redactor = new DicomRedactor(config);
+    IDicomRedactor redactor = createDicomRedactor(config);
     redactor.redact(is, os);
   }
 
@@ -400,7 +441,7 @@ public final class DicomRedactorTest {
     expected.setString(Tag.SeriesInstanceUID, VR.UI,
         "2.25.291421206658433162738860295383136573243");
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -423,9 +464,9 @@ public final class DicomRedactorTest {
     expected.setString(Tag.SOPInstanceUID, VR.UI, "2.25.235153174557024093797895412215599142974");
     expected.setString(Tag.StudyInstanceUID, VR.UI, "2.25.11567562993222170604478667374799402574");
     expected.setString(Tag.SeriesInstanceUID, VR.UI,
-         "2.25.291421206658433162738860295383136573243");
+        "2.25.291421206658433162738860295383136573243");
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -445,9 +486,9 @@ public final class DicomRedactorTest {
     expected.setString(Tag.SOPInstanceUID, VR.UI, "2.25.235153174557024093797895412215599142974");
     expected.setString(Tag.StudyInstanceUID, VR.UI, "2.25.11567562993222170604478667374799402574");
     expected.setString(Tag.SeriesInstanceUID, VR.UI,
-         "2.25.291421206658433162738860295383136573243");
+        "2.25.291421206658433162738860295383136573243");
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -470,9 +511,9 @@ public final class DicomRedactorTest {
     expected.setString(Tag.SOPInstanceUID, VR.UI, "2.25.235153174557024093797895412215599142974");
     expected.setString(Tag.StudyInstanceUID, VR.UI, "2.25.11567562993222170604478667374799402574");
     expected.setString(Tag.SeriesInstanceUID, VR.UI,
-         "2.25.291421206658433162738860295383136573243");
+        "2.25.291421206658433162738860295383136573243");
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 
   @Test
@@ -495,10 +536,10 @@ public final class DicomRedactorTest {
     expected.setString(Tag.SOPInstanceUID, VR.UI, "1.2.3.235153174557024093797895412215599142974");
     expected.setString(Tag.StudyInstanceUID, VR.UI, "1.2.3.11567562993222170604478667374799402574");
     expected.setString(Tag.SeriesInstanceUID, VR.UI,
-         "1.2.3.291421206658433162738860295383136573243");
+        "1.2.3.291421206658433162738860295383136573243");
 
     redactAndVerify(metadata, dataset, expectedMetadata, expected,
-        new DicomRedactor(config, prefix));
+        createDicomRedactor(config, prefix));
   }
 
   @Test
@@ -518,7 +559,7 @@ public final class DicomRedactorTest {
     expected.setString(Tag.PatientName, VR.PN, "");
     expected.setString(Tag.SurfaceComments, VR.UT, "Test Comments");
 
-    redactAndVerify(metadata, dataset, expectedMetadata, expected, new DicomRedactor(config));
+    redactAndVerify(metadata, dataset, expectedMetadata, expected, createDicomRedactor(config));
   }
 }
 

@@ -4,11 +4,7 @@ package com.google.cloud.healthcare.deid.redactor;
 import com.google.cloud.healthcare.deid.redactor.protos.DicomConfigProtos.DicomConfig;
 import com.google.protobuf.TextFormat;
 import java.io.BufferedReader;
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -17,32 +13,26 @@ import java.util.Set;
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Attributes.Visitor;
 import org.dcm4che3.data.StandardElementDictionary;
-import org.dcm4che3.data.Tag;
-import org.dcm4che3.data.UID;
 import org.dcm4che3.data.VR;
-import org.dcm4che3.imageio.codec.TransferSyntaxType;
-import org.dcm4che3.io.BulkDataDescriptor;
-import org.dcm4che3.io.DicomInputStream;
-import org.dcm4che3.io.DicomInputStream.IncludeBulkData;
-import org.dcm4che3.io.DicomOutputStream;
 import org.dcm4che3.util.UIDUtils;
 
-public abstract class AbstractDicomRedactor implements IDicomRedactor{
+public abstract class AbstractDicomRedactor implements IDicomRedactor {
 
   /**
    * RedactorSettings holds the settings for DICOM redaction.
    */
-  protected final class RedactorSettings {
+  private final class RedactorSettings {
 
     public Set<Integer> tagSet;
     public boolean isKeepList;
   }
 
-  protected final RedactorSettings settings;
+  private String overrideUidRoot = null;
+  private final RedactorSettings settings;
   // Replace SOPInstanceUID, StudyInstanceUID, SeriesInstanceUID, and MediaStorageSOPInstanceUID.
-  protected static final List<Integer> replaceUIDs =
+  private static final List<Integer> replaceUIDs =
       new ArrayList<>(Arrays.asList(0x00080018, 0x0020000D, 0x0020000E, 0x00020003));
-  protected static final String CHC_BASIC_FILE = "chc_basic.textproto";
+  private static final String CHC_BASIC_FILE = "chc_basic.textproto";
 
   /**
    * Iterates over all tags in a DICOM file and redacts based on tagSet. If isKeepList is true, the
@@ -50,7 +40,8 @@ public abstract class AbstractDicomRedactor implements IDicomRedactor{
    * tags in the tagSet are removed and all others are kept untouched.
    */
   protected class RedactVisitor implements Visitor {
-    protected RedactVisitor(){
+
+    protected RedactVisitor() {
 
     }
 
@@ -83,7 +74,7 @@ public abstract class AbstractDicomRedactor implements IDicomRedactor{
    */
   public AbstractDicomRedactor(DicomConfig config, String prefix) throws Exception {
     this(config);
-    UIDUtils.setRoot(prefix);
+    overrideUidRoot = prefix;
   }
 
   /**
@@ -169,7 +160,8 @@ public abstract class AbstractDicomRedactor implements IDicomRedactor{
    * Regenerates UID for the given tag. Does not check VR of tag to ensure it is a UID.
    */
   protected void regenUID(Attributes attrs, int tag) {
-    String newUID = UIDUtils.createNameBasedUID(attrs.getString(tag).getBytes());
+    String usedUidRoot = overrideUidRoot == null ? UIDUtils.getRoot() : overrideUidRoot;
+    String newUID = UIDUtils.createNameUID(attrs.getString(tag).getBytes(), usedUidRoot);
     attrs.setString(tag, VR.UI, newUID);
   }
 
