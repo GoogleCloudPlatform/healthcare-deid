@@ -78,6 +78,7 @@ public class DicomRedactor {
 
   /**
    * Constructs a DicomRedactor for the provided config.
+   * @param config controls the redaction process.
    * @throws IllegalArgumentException if the configuration structure is invalid.
    */
   public DicomRedactor(DicomConfig config) throws Exception {
@@ -86,6 +87,8 @@ public class DicomRedactor {
 
   /**
    * Constructs a DicomRedactor for the provided config and prefix for UID replacement.
+   * @param config controls the redaction process.
+   * @param prefix is the prefix to apply before every new generated UID.
    * @throws IllegalArgumentException if the configuration structure is invalid.
    */
   public DicomRedactor(DicomConfig config, String prefix) throws Exception {
@@ -177,6 +180,8 @@ public class DicomRedactor {
 
   /**
    * Redact the given DICOM input stream, and write the result to the given output stream.
+   * @param inStream the DICOM input stream to read.
+   * @param outStream the output stream to write the result to.
    * @throws IOException if the input stream cannot be read or the output stream cannot be written.
    * @throws IllegalArgumentException if there is an error redacting the object.
    */

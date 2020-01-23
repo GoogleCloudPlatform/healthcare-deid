@@ -16,6 +16,8 @@
 
 plugins {
     id 'java-library'
+    id 'maven-publish'
+    id 'signing'
     id 'com.google.protobuf' version "0.8.7"
 }
 
@@ -39,4 +41,68 @@ protobuf {
   protoc {
     artifact = "com.google.protobuf:protoc:3.7.1";
   }
+}
+
+task sourcesJar(type: Jar) {
+  from sourceSets.main.allJava
+  from sourceSets.main.proto
+  archiveClassifier = 'sources'
+}
+
+javadoc {
+  source "${buildDir}/gen"
+  classpath = sourceSets.main.runtimeClasspath
+}
+
+task javadocJar(type: Jar) {
+  from javadoc
+  archiveClassifier = 'javadoc'
+}
+
+publishing {
+  publications {
+    mavenJava(MavenPublication) {
+      artifactId = 'offline-dicom-redactor'
+      from components.java
+      artifact sourcesJar
+      artifact javadocJar
+      pom {
+        name = "Offline DICOM Redactor"
+        description = "A Java library for redacting sensitive data contained in DICOM tags."
+        url = 'https://github.com/GoogleCloudPlatform/healthcare-deid'
+        licenses {
+          license {
+            name = 'The Apache License, Version 2.0'
+            url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+          }
+        }
+        developers {
+          developer {
+            name = "The Cloud Healthcare Team"
+            email = "cloud-healthcare-api-help@google.com"
+          }
+        }
+        scm {
+          connection = 'scm:git:git://github.com/GoogleCloudPlatform/healthcare-deid.git'
+          developerConnection = 'scm:git:ssh://github.com/GoogleCloudPlatform/healthcare-deid.git'
+          url = 'https://github.com/GoogleCloudPlatform/healthcare-deid/tree/master'
+        }
+      }
+    }
+  }
+  repositories {
+    maven {
+      def releasesRepoUrl = 'https://oss.sonatype.org/service/local/staging/deploy/maven2'
+      def snapshotsRepoUrl = 'https://oss.sonatype.org/content/repositories/snapshots'
+      url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+      credentials {
+        username ossrhUsername
+        password ossrhPassword
+      }
+    }
+  }
+}
+
+signing {
+  sign publishing.publications.mavenJava
 }

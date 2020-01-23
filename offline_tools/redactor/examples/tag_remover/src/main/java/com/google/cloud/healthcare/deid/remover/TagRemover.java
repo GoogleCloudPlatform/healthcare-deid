@@ -38,7 +38,7 @@ import org.apache.commons.cli.ParseException;
 /**
  * TagRemover is a command line utility that removes tags from DICOM files.
  */
-final class TagRemover {
+public final class TagRemover {
 
   public static void main(String[] args) throws Exception {
     Options options = new Options();
